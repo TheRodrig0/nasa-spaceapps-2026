@@ -16,6 +16,10 @@ export const BUILDING_CATALOG: ReadonlyArray<BuildingDefinition> = [
     cols: 3,
     rows: 3,
     description: 'Núcleo de comando do posto avançado.',
+    oreCost: 80,
+    constantGen: 4,
+    energyDemand: 2,
+    batteryCapacity: 20,
   },
   {
     id: 'home_colonists',
@@ -25,6 +29,8 @@ export const BUILDING_CATALOG: ReadonlyArray<BuildingDefinition> = [
     cols: 2,
     rows: 2,
     description: 'Módulo habitacional pressurizado.',
+    oreCost: 45,
+    energyDemand: 2,
   },
   {
     id: 'farm',
@@ -34,6 +40,8 @@ export const BUILDING_CATALOG: ReadonlyArray<BuildingDefinition> = [
     cols: 2,
     rows: 2,
     description: 'Cultivo e suporte de vida.',
+    oreCost: 50,
+    energyDemand: 3,
   },
 
   // Energia
@@ -45,6 +53,8 @@ export const BUILDING_CATALOG: ReadonlyArray<BuildingDefinition> = [
     cols: 2,
     rows: 1,
     description: 'Captação solar compacta.',
+    oreCost: 25,
+    solarGen: 6,
   },
   {
     id: 'solar_generator',
@@ -54,6 +64,8 @@ export const BUILDING_CATALOG: ReadonlyArray<BuildingDefinition> = [
     cols: 2,
     rows: 2,
     description: 'Estação de geração fotovoltaica.',
+    oreCost: 55,
+    solarGen: 14,
   },
   {
     id: 'battery',
@@ -63,6 +75,8 @@ export const BUILDING_CATALOG: ReadonlyArray<BuildingDefinition> = [
     cols: 3,
     rows: 2,
     description: 'Armazenamento de energia de alta capacidade.',
+    oreCost: 40,
+    batteryCapacity: 80,
   },
   {
     id: 'geothermal_generator',
@@ -72,6 +86,8 @@ export const BUILDING_CATALOG: ReadonlyArray<BuildingDefinition> = [
     cols: 2,
     rows: 2,
     description: 'Extração térmica do subsolo marciano.',
+    oreCost: 90,
+    constantGen: 10,
   },
   {
     id: 'reactor',
@@ -81,6 +97,8 @@ export const BUILDING_CATALOG: ReadonlyArray<BuildingDefinition> = [
     cols: 3,
     rows: 3,
     description: 'Fonte de energia de alta capacidade.',
+    oreCost: 160,
+    constantGen: 24,
   },
 
   // Mineração
@@ -92,6 +110,9 @@ export const BUILDING_CATALOG: ReadonlyArray<BuildingDefinition> = [
     cols: 3,
     rows: 2,
     description: 'Processamento de regolito e ligas.',
+    oreCost: 50,
+    energyDemand: 6,
+    orePerSec: 2.5,
   },
   {
     id: 'resource_warehouse',
@@ -101,6 +122,9 @@ export const BUILDING_CATALOG: ReadonlyArray<BuildingDefinition> = [
     cols: 2,
     rows: 2,
     description: 'Armazenamento de minério bruto.',
+    oreCost: 35,
+    energyDemand: 1,
+    oreBonusMultiplier: 0.15,
   },
   {
     id: 'drone_control',
@@ -110,6 +134,9 @@ export const BUILDING_CATALOG: ReadonlyArray<BuildingDefinition> = [
     cols: 2,
     rows: 2,
     description: 'Coordenação de drones extratores.',
+    oreCost: 65,
+    energyDemand: 5,
+    orePerSec: 3.0,
   },
   {
     id: 'drone_charging',
@@ -119,5 +146,8 @@ export const BUILDING_CATALOG: ReadonlyArray<BuildingDefinition> = [
     cols: 2,
     rows: 1,
     description: 'Doca de recarga rápida.',
+    oreCost: 35,
+    energyDemand: 3,
+    oreBonusMultiplier: 0.15,
   },
 ];

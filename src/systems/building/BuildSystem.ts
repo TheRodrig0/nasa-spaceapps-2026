@@ -1,5 +1,6 @@
 import * as pc from 'playcanvas';
 import type {
+  BuildEconomyHooks,
   BuildingDefinition,
   CellInvalidReason,
   CellValidation,
@@ -73,6 +74,7 @@ export class BuildSystem {
   private ghostDefId: string | null = null;
   private ghostValidState: boolean | null = null;
 
+  private economyHooks: BuildEconomyHooks | null = null;
   private selectedDef: BuildingDefinition | null = null;
   private rotationDeg = 0;
   private currentPreview: PlacementPreview | null = null;
@@ -105,8 +107,8 @@ export class BuildSystem {
     this.pointerY = e.clientY - rect.top;
     this.pointerInside = true;
     this.updatePreview();
-    if (this.currentPreview?.allValid) {
-      this.placeFromPreview(this.currentPreview);
+    if (this.currentPreview?.allValid && this.canAffordSelected()) {
+      void this.placeFromPreview(this.currentPreview);
     }
   };
 
@@ -176,6 +178,36 @@ export class BuildSystem {
 
   public getPlacedCount(): number {
     return this.placedBuildings.length;
+  }
+
+  public getPlacedBuildings(): readonly PlacedBuilding[] {
+    return this.placedBuildings;
+  }
+
+  public getActiveMinerCount(): number {
+    let count = 0;
+    for (const building of this.placedBuildings) {
+      if (building.definitionId === 'machine_plant') {
+        count += 1;
+      }
+    }
+    return count;
+  }
+
+  public setEconomyHooks(hooks: BuildEconomyHooks | null): void {
+    this.economyHooks = hooks;
+  }
+
+  public canAffordSelected(): boolean {
+    if (!this.selectedDef) return false;
+    return this.economyHooks?.canAfford(this.selectedDef.oreCost) ?? true;
+  }
+
+  public tryPlaceBuilding(): boolean {
+    if (!this.selectedDef || !this.currentPreview?.allValid) return false;
+    if (!this.canAffordSelected()) return false;
+    void this.placeFromPreview(this.currentPreview);
+    return true;
   }
 
   public selectBuilding(def: BuildingDefinition | null): void {
@@ -531,6 +563,11 @@ export class BuildSystem {
   }
 
   private async placeFromPreview(preview: PlacementPreview): Promise<void> {
+    const cost = preview.definition.oreCost;
+    if (this.economyHooks && !this.economyHooks.canAfford(cost)) {
+      return;
+    }
+
     for (const cell of preview.cells) {
       if (!cell.valid || this.occupiedCells.has(cellKey(cell.gx, cell.gz))) {
         return;
@@ -559,6 +596,7 @@ export class BuildSystem {
       worldCenter: { x: centerX, y: preview.baseY, z: centerZ },
     };
     this.placedBuildings.push(placed);
+    this.economyHooks?.onSpend(cost);
     this.emitChange();
 
     try {
@@ -576,6 +614,10 @@ export class BuildSystem {
       // Roll back cell reservation if asset load fails
       for (const cell of preview.cells) {
         this.occupiedCells.delete(cellKey(cell.gx, cell.gz));
+      }
+      const idx = this.placedBuildings.indexOf(placed);
+      if (idx !== -1) {
+        this.placedBuildings.splice(idx, 1);
       }
       this.emitChange();
     }
