@@ -1,21 +1,20 @@
+import { DustStormFx, ElectricStormFx, MeteorShowerFx, TornadoFx } from '../entities/index.ts';
 import {
-  CRATER_RADIUS,
-  IMPACT_FLASH_DURATION,
-  MAX_SPREAD_RADIUS,
-  METEOR_FALL_DURATION,
-  SHOCKWAVE_MAX_RADIUS,
-  VolcanicFrontFx,
-} from '../entities/volcanic/index.ts';
-import { BuildSystem, TerrainManager, WORLD_HALF } from '../systems/index.ts';
+  BaseSurvivalSystem,
+  BuildSystem,
+  EventManager,
+  SolarCycleSystem,
+  TerrainManager,
+  WORLD_HALF,
+} from '../systems/index.ts';
 import { TerrainCameraEvent, WorldBridgeEvent } from '../types/index.ts';
-import type { GameState } from '../types/index.ts';
-import { mountBuildMenu } from '../ui/index.ts';
+import type { EventUpdateContext, GameState } from '../types/index.ts';
+import { mountBuildMenu, mountSurvivalHud } from '../ui/index.ts';
 import { IsometricCameraController } from './input-controller.ts';
 import { createCrewSandboxApp, createMainCamera, createMarsSun } from './scene-setup.ts';
 
 const INITIAL_CAMERA_SPEED = 56;
 const INITIAL_IMPACT_CENTER = { x: 0, z: -240 } as const;
-const SHOCKWAVE_SPEED = 780;
 const INITIAL_FOCUS_XZ = { x: 0, z: -110 } as const;
 const INITIAL_DISTANCE = 720;
 const INITIAL_YAW = 45;
@@ -30,60 +29,33 @@ function resolveCanvas(): HTMLCanvasElement {
   return canvas;
 }
 
-function advanceImpactState(dt: number, state: GameState): void {
-  if (state.impactPhase === 'idle') {
-    return;
-  }
-
-  state.phaseElapsed += dt;
-
-  if (state.impactPhase === 'meteor_falling') {
-    if (state.phaseElapsed >= METEOR_FALL_DURATION) {
-      state.impactPhase = 'impact_flash';
-      state.phaseElapsed = 0;
-      state.spreadRadius = CRATER_RADIUS * 0.92;
-      state.shockwaveRadius = 48;
-    }
-    return;
-  }
-
-  state.shockwaveRadius = Math.min(
-    SHOCKWAVE_MAX_RADIUS,
-    state.shockwaveRadius + SHOCKWAVE_SPEED * dt,
-  );
-
-  const postImpactSec =
-    state.impactPhase === 'impact_flash'
-      ? state.phaseElapsed
-      : IMPACT_FLASH_DURATION + state.phaseElapsed;
-  const burstBoost = 380 * Math.exp(-postImpactSec * 1.15);
-  const currentSpreadSpeed = 140 + burstBoost;
-  state.spreadRadius = Math.min(MAX_SPREAD_RADIUS, state.spreadRadius + currentSpreadSpeed * dt);
-
-  if (state.impactPhase === 'impact_flash' && state.phaseElapsed >= IMPACT_FLASH_DURATION) {
-    state.impactPhase = 'spreading';
-    state.phaseElapsed = 0;
-  }
-}
-
 /**
- * Bootstraps the PlayCanvas scene, Mars terrain, colossal asteroid impact + meteorite swarm,
- * and 3D tactical isometric camera loop (R triggers a new strike at current camera focus).
+ * Bootstraps the PlayCanvas scene, Mars terrain, procedural world disaster events
+ * (meteor showers, tornadoes, electric storms), and 3D tactical isometric camera loop.
  */
 export async function bootstrapGame(): Promise<void> {
   const canvas = resolveCanvas();
   const app = await createCrewSandboxApp(canvas);
 
-  createMarsSun(app);
+  const sunLight = createMarsSun(app);
   const camera = createMainCamera(app);
 
   const terrainManager = new TerrainManager(app, 4092, false, { ...INITIAL_IMPACT_CENTER });
-  const volcanicFx = new VolcanicFrontFx(app);
-  app.root.addChild(volcanicFx.entity);
+
+  const eventManager = new EventManager();
+  eventManager.registerHandler(new MeteorShowerFx(app));
+  eventManager.registerHandler(new TornadoFx(app));
+  eventManager.registerHandler(new ElectricStormFx(app, sunLight));
+  eventManager.registerHandler(new DustStormFx(app, sunLight));
 
   const buildSystem = new BuildSystem(app, canvas, camera, terrainManager);
   app.root.addChild(buildSystem.entity);
   const unmountBuildMenu = mountBuildMenu(buildSystem);
+
+  const solarCycle = new SolarCycleSystem(app, sunLight);
+
+  const survivalSystem = new BaseSurvivalSystem();
+  const survivalHud = mountSurvivalHud({ ...survivalSystem.getState(), sol: solarCycle.getState() });
 
   const sampleHeight = (x: number, z: number): number => terrainManager.sampleHeightAt(x, z);
 
@@ -118,56 +90,53 @@ export async function bootstrapGame(): Promise<void> {
   isometricCamera.update(0.001, state, camera, sampleHeight);
   camera.setPosition(state.cameraPos.x, state.cameraPos.y, state.cameraPos.z);
 
-  app.fire(WorldBridgeEvent.IMPACT_STATE_CHANGED, {
-    center: state.impactCenter,
-    spreadRadius: state.spreadRadius,
-    shockwaveRadius: state.shockwaveRadius,
-    craterRadius: CRATER_RADIUS,
-    timeSeconds: state.elapsedTime,
-  });
-
   const onResize = (): void => {
     app.resizeCanvas();
   };
   window.addEventListener('resize', onResize);
 
   app.on('update', (rawDt: number) => {
-    const dt = Math.min(Math.max(0, rawDt), 0.1);
+    const safeRawDt = Number.isFinite(rawDt) ? rawDt : 0.016;
+    const dt = Math.min(Math.max(0, safeRawDt), 0.1);
     state.elapsedTime += dt;
 
     isometricCamera.update(dt, state, camera, sampleHeight);
 
-    if (isometricCamera.consumeImpactReset()) {
-      const limit = WORLD_HALF - 160;
-      state.impactCenter = {
-        x: Math.max(-limit, Math.min(limit, state.focusTarget.x)),
-        z: Math.max(-limit, Math.min(limit, state.focusTarget.z)),
-      };
-      state.impactPhase = 'meteor_falling';
-      state.phaseElapsed = 0;
-      state.spreadRadius = 0;
-      state.shockwaveRadius = 0;
+    const eventCtx: EventUpdateContext = {
+      focusTarget: state.focusTarget,
+      buildings: buildSystem.getPlacedBuildings(),
+      sampleHeight,
+      worldHalf: WORLD_HALF,
+    };
+
+    let trigger = isometricCamera.consumeEventTrigger();
+    while (trigger) {
+      if (trigger === 'random') {
+        eventManager.triggerRandomEvent(eventCtx, false);
+      } else {
+        eventManager.triggerEvent(trigger, eventCtx, false);
+      }
+      trigger = isometricCamera.consumeEventTrigger();
     }
 
-    advanceImpactState(dt, state);
+    const solState = solarCycle.update(dt, state.focusTarget);
 
-    app.fire(WorldBridgeEvent.IMPACT_STATE_CHANGED, {
-      center: state.impactCenter,
-      spreadRadius: state.spreadRadius,
-      shockwaveRadius: state.shockwaveRadius,
-      craterRadius: CRATER_RADIUS,
-      timeSeconds: state.elapsedTime,
-    });
-
-    const shake = volcanicFx.update(dt, state, terrainManager, camera);
+    const eventStep = eventManager.update(dt, eventCtx);
 
     camera.setPosition(
-      state.cameraPos.x + shake.x,
-      state.cameraPos.y + shake.y,
-      state.cameraPos.z + shake.z,
+      state.cameraPos.x + eventStep.shakeOffset.x,
+      state.cameraPos.y + eventStep.shakeOffset.y,
+      state.cameraPos.z + eventStep.shakeOffset.z,
     );
 
     buildSystem.update();
+
+    if (eventStep.damageThisFrame > 0) {
+      survivalSystem.applyDamage(eventStep.damageThisFrame);
+    }
+    const activeMiners = buildSystem.getActiveMinerCount();
+    survivalSystem.update(dt, activeMiners, eventStep.productionMultiplier, eventStep.activeEvent);
+    survivalHud.update({ ...survivalSystem.getState(), sol: solState });
 
     const focusXZ = { x: state.focusTarget.x, z: state.focusTarget.z };
     app.fire(WorldBridgeEvent.WALKER_POSE_UPDATED, focusXZ);
@@ -177,10 +146,11 @@ export async function bootstrapGame(): Promise<void> {
   const onBeforeUnload = (): void => {
     window.removeEventListener('resize', onResize);
     window.removeEventListener('beforeunload', onBeforeUnload);
+    survivalHud.dispose();
     unmountBuildMenu();
     buildSystem.dispose();
     isometricCamera.dispose();
-    volcanicFx.destroy();
+    eventManager.destroy();
     terrainManager.destroy();
   };
   window.addEventListener('beforeunload', onBeforeUnload);
