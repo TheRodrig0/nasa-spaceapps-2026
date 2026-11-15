@@ -1,0 +1,21 @@
+{
+  "name": "nasa-spaceapps-2026",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "start": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "tsc --noEmit"
+  },
+  "dependencies": {
+    "playcanvas": "^2.22.0",
+    "preact": "^10.29.8"
+  },
+  "devDependencies": {
+    "typescript": "~6.0.3",
+    "vite": "^8.2.2"
+  }
+}
