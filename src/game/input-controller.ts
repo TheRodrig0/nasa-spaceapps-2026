@@ -1,5 +1,7 @@
 import type { Entity } from 'playcanvas';
-import type { GameState, IsometricCameraConfig, Vec3XYZ } from '../types/index.ts';
+import type { GameState, IsometricCameraConfig, Vec3XYZ, WorldEventType } from '../types/index.ts';
+
+export type EventTriggerType = WorldEventType | 'random';
 
 const DEFAULT_YAW = 45;
 const DEFAULT_PITCH = -42;
@@ -30,7 +32,7 @@ const ELEVATION_DAMPING = 10;
  * - Smooth yaw rotation (Q / E or Right-click drag orbit).
  * - Middle-drag or Shift/Ctrl+Right-drag map panning with visible cursor (no pointer lock).
  * - Terrain elevation tracking at focus point + mountain anti-clipping clearance.
- * - R triggers meteor strike at current camera ground focus point.
+ * - Debug event keys: 1 (Meteor Shower), 2 (Tornado), 3 (Electric Storm), R (Random Event).
  */
 export class IsometricCameraController {
   private readonly canvas: HTMLCanvasElement;
@@ -38,6 +40,7 @@ export class IsometricCameraController {
   private readonly onResetImpact?: () => void;
   private readonly defaultHeightSampler?: (x: number, z: number) => number;
   private readonly keysDown = new Set<string>();
+  private readonly eventTriggerQueue: EventTriggerType[] = [];
 
   private readonly minPitch: number;
   private readonly maxPitch: number;
@@ -70,9 +73,20 @@ export class IsometricCameraController {
 
   private readonly handleKeyDown = (event: KeyboardEvent): void => {
     this.keysDown.add(event.code);
-    if (event.code === 'KeyR' && !event.repeat) {
-      this.resetRequested = true;
-      this.onResetImpact?.();
+    if (!event.repeat) {
+      if (event.code === 'Digit1') {
+        this.eventTriggerQueue.push('meteor_shower');
+      } else if (event.code === 'Digit2') {
+        this.eventTriggerQueue.push('tornado');
+      } else if (event.code === 'Digit3') {
+        this.eventTriggerQueue.push('electric_storm');
+      } else if (event.code === 'Digit4') {
+        this.eventTriggerQueue.push('dust_storm');
+      } else if (event.code === 'KeyR') {
+        this.eventTriggerQueue.push('random');
+        this.resetRequested = true;
+        this.onResetImpact?.();
+      }
     }
   };
 
@@ -205,6 +219,10 @@ export class IsometricCameraController {
     this.canvas.addEventListener('mousedown', this.handleMouseDown);
     this.canvas.addEventListener('wheel', this.handleWheel, { passive: false });
     this.canvas.addEventListener('contextmenu', this.handleContextMenu);
+  }
+
+  public consumeEventTrigger(): EventTriggerType | null {
+    return this.eventTriggerQueue.shift() ?? null;
   }
 
   public consumeImpactReset(): boolean {
@@ -378,6 +396,7 @@ export class IsometricCameraController {
 
   public clear(): void {
     this.keysDown.clear();
+    this.eventTriggerQueue.length = 0;
     this.isMiddleDragging = false;
     this.isRightDragging = false;
     this.resetRequested = false;
