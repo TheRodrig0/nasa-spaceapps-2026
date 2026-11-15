@@ -3,6 +3,9 @@ import { useEffect, useState } from 'preact/hooks';
 import { BUILDING_CATALOG, BUILDING_CATEGORIES, BuildSystem } from '../systems/index.ts';
 import type { BuildingCategory } from '../types/index.ts';
 
+const panelFrame = new URL('./assets/kenney/panel.png', import.meta.url).href;
+const activeButtonFrame = new URL('./assets/kenney/active-button.png', import.meta.url).href;
+
 function BuildMenuApp({ buildSystem }: { buildSystem: BuildSystem }) {
   const [activeCategory, setActiveCategory] = useState<BuildingCategory>('casas');
   const [, setTick] = useState(0);
@@ -100,7 +103,7 @@ function BuildMenuApp({ buildSystem }: { buildSystem: BuildSystem }) {
           pointerEvents: 'auto',
           background: 'rgba(20, 14, 12, 0.92)',
           border: '1px solid #423026',
-          borderRadius: '14px',
+          borderImage: `url("${panelFrame}") 16 / 6px stretch`,
           padding: '10px 14px',
           maxWidth: '820px',
           width: '100%',
@@ -130,12 +133,14 @@ function BuildMenuApp({ buildSystem }: { buildSystem: BuildSystem }) {
               {
                 key: cat.id,
                 type: 'button',
+                'aria-pressed': active,
                 onClick: () => setActiveCategory(cat.id),
                 style: {
                   background: active ? '#ff8533' : '#261c17',
                   color: active ? '#180e08' : '#e6d8cf',
                   border: active ? '1px solid #ffad70' : '1px solid #433128',
-                  borderRadius: '8px',
+                  borderImage: active ? `url("${activeButtonFrame}") 18 / 4px stretch` : undefined,
+                  borderRadius: active ? 0 : '8px',
                   padding: '6px 14px',
                   fontWeight: active ? '700' : '500',
                   fontSize: '13px',
