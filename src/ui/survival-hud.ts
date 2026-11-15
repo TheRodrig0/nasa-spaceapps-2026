@@ -1,7 +1,14 @@
 import { h, render } from 'preact';
 import type { BaseSurvivalState } from '../systems/survival/BaseSurvivalSystem.ts';
+import { COLONY_BALANCE } from '../systems/survival/economy.ts';
 
 const units = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 0 });
+const rates = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 });
+const weatherLabels = {
+  clear: 'Tempo limpo',
+  'dust-storm': 'Tempestade de poeira',
+  'electrical-storm': 'Tempestade elétrica',
+};
 const oreIcon = new URL('./assets/lucide/gem.svg', import.meta.url).href;
 const integrityIcon = new URL('./assets/lucide/shield.svg', import.meta.url).href;
 const impactIcon = new URL('./assets/lucide/triangle-alert.svg', import.meta.url).href;
@@ -21,7 +28,10 @@ function hudIcon(src: string) {
   });
 }
 
-function SurvivalHud({ ore, integrity, impactCount, impactAlert }: BaseSurvivalState) {
+function SurvivalHud({ state, onRepair }: { state: BaseSurvivalState; onRepair?: () => void }) {
+  const { ore, integrity, impactCount, impactAlert, generation, demand, battery, batteryCapacity,
+    miners, supportCapacity, miningRate, weather } = state;
+
   return h(
     'section',
     {
@@ -70,28 +80,57 @@ function SurvivalHud({ ore, integrity, impactCount, impactAlert }: BaseSurvivalS
         accentColor: integrity <= 25 ? '#ff8585' : '#7cdec0',
       },
     }),
+    h('dl', {
+      style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '7px 12px', margin: '10px 0 0' },
+    },
+    h('div', null, h('dt', { style: labelStyle }, 'Geração / demanda'),
+      h('dd', { style: { margin: 0 } }, `${rates.format(generation)} / ${rates.format(demand)} UJ/s`)),
+    h('div', null, h('dt', { style: labelStyle }, 'Bateria'),
+      h('dd', { style: { margin: 0 } }, `${rates.format(battery)} / ${batteryCapacity} UJ`)),
+    h('div', null, h('dt', { style: labelStyle }, 'Mineração'),
+      h('dd', { style: { margin: 0 } }, `${rates.format(miningRate)} UJ/s`)),
+    h('div', null, h('dt', { style: labelStyle }, 'Suporte de vida'),
+      h('dd', { style: { margin: 0 } }, `${miners} / ${supportCapacity} usinas`))),
+    h('p', { style: { margin: '8px 0 0', color: weather === 'clear' ? '#d3bbb0' : '#ffb678', fontSize: '12px' } },
+      weatherLabels[weather]),
+    onRepair && integrity > 0 && integrity < 100
+      ? h('button', {
+        type: 'button',
+        disabled: ore < COLONY_BALANCE.repairOrePerPoint,
+        onClick: onRepair,
+        style: {
+          pointerEvents: 'auto', marginTop: '8px', padding: '5px 8px', borderRadius: '6px',
+          border: '1px solid #8b5638', background: '#3f281c', color: '#f5ece6',
+        },
+      }, `Reparar · ${COLONY_BALANCE.repairOrePerPoint} UJ por ponto`)
+      : null,
     h('div', { role: 'status' },
       integrity === 0 || impactAlert
         ? h('p', { key: impactCount, style: { ...iconRow, margin: '8px 0 0', color: '#ffb1a6', fontWeight: '600' } },
           hudIcon(impactIcon),
-          integrity === 0 ? 'Base destruída' : 'Impacto atingiu a base')
+          integrity === 0 ? 'Base destruída' : 'Base atingida')
         : null,
     ),
   );
 }
 
-export function mountSurvivalHud(initialState: BaseSurvivalState) {
+export function mountSurvivalHud(initialState: BaseSurvivalState, onRepair?: () => void) {
   const root = document.createElement('div');
   document.body.appendChild(root);
   let last: BaseSurvivalState | undefined;
 
   function update(state: BaseSurvivalState): void {
     const ore = Math.floor(state.ore + 1e-9);
+    const battery = Math.round(state.battery * 10) / 10;
     if (last?.ore === ore && last.integrity === state.integrity
-      && last.impactCount === state.impactCount && last.impactAlert === state.impactAlert) return;
+      && last.impactCount === state.impactCount && last.impactAlert === state.impactAlert
+      && last.generation === state.generation && last.demand === state.demand
+      && last.battery === battery && last.batteryCapacity === state.batteryCapacity
+      && last.miners === state.miners && last.supportCapacity === state.supportCapacity
+      && last.miningRate === state.miningRate && last.weather === state.weather) return;
 
-    last = { ...state, ore };
-    render(h(SurvivalHud, last), root);
+    last = { ...state, ore, battery };
+    render(h(SurvivalHud, { state: last, onRepair }), root);
   }
 
   update(initialState);
