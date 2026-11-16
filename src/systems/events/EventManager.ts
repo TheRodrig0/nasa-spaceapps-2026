@@ -273,6 +273,7 @@ export class EventManager {
       productionMultiplier,
       shakeOffset,
       buildingsHitThisFrame: Math.max(0, Math.floor(step.buildingsHitThisFrame ?? 0)),
+      groundImpact: step.groundImpact,
       activeEvent: this.getActiveEvent(),
     };
   }

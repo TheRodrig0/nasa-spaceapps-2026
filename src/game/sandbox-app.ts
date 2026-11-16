@@ -13,6 +13,7 @@ import type { ActiveEventInfo, EventUpdateContext, GameState } from '../types/in
 import { mountBuildMenu, mountSurvivalHud } from '../ui/index.ts';
 import { LOADOUT_CONFIGS } from '../systems/survival/loadouts.ts';
 import { ScienceMission } from '../systems/survival/science-mission.ts';
+import { DEFAULT_DISASTER_VOLUME, DisasterAudio } from '../systems/events/disaster-audio.ts';
 import type { DifficultyId, GameSettings, LoadoutId } from '../ui/index.ts';
 import { IsometricCameraController } from './input-controller.ts';
 import { createCrewSandboxApp, createMainCamera, createMarsSun } from './scene-setup.ts';
@@ -30,6 +31,8 @@ const DEFAULT_SETTINGS: GameSettings = {
   cameraSpeed: 'normal',
   resolutionScale: 'native',
   solDurationSec: 48,
+  disasterSound: true,
+  disasterVolume: DEFAULT_DISASTER_VOLUME,
 };
 
 const DIFFICULTY_COOLDOWNS = {
@@ -60,6 +63,12 @@ function loadSettings(): GameSettings {
         parsed.solDurationSec === 72
           ? parsed.solDurationSec
           : DEFAULT_SETTINGS.solDurationSec,
+      disasterSound: typeof parsed.disasterSound === 'boolean'
+        ? parsed.disasterSound
+        : DEFAULT_SETTINGS.disasterSound,
+      disasterVolume: typeof parsed.disasterVolume === 'number' && Number.isFinite(parsed.disasterVolume)
+        ? Math.min(100, Math.max(0, Math.round(parsed.disasterVolume)))
+        : DEFAULT_SETTINGS.disasterVolume,
     };
   } catch {
     return { ...DEFAULT_SETTINGS };
@@ -97,6 +106,7 @@ export async function bootstrapGame(): Promise<void> {
   const terrainManager = new TerrainManager(app, 4092, false, { ...INITIAL_IMPACT_CENTER });
 
   const eventManager = new EventManager();
+  const disasterAudio = new DisasterAudio();
   eventManager.registerHandler(new MeteorShowerFx(app));
   eventManager.registerHandler(new TornadoFx(app));
   eventManager.registerHandler(new ElectricStormFx(app, sunLight));
@@ -166,25 +176,34 @@ export async function bootstrapGame(): Promise<void> {
   let difficulty: DifficultyId = 'normal';
   let settings: GameSettings = loadSettings();
   let settingsOpen = false;
+  let missionStarted = false;
   let latestSol = solarCycle.getState();
   let latestActiveEvent: ActiveEventInfo | null = null;
 
   const uiRoot = document.getElementById('ui-root');
 
-  const applySettings = (next: GameSettings): void => {
+  const applySettings = (next: GameSettings, previous?: GameSettings): void => {
     settings = next;
     saveSettings(next);
-    const speedMult = next.cameraSpeed === 'slow' ? 0.65 : next.cameraSpeed === 'fast' ? 1.65 : 1;
-    isometricCamera.setPanSpeedMultiplier(speedMult);
-    solarCycle.setSolDurationSec(next.solDurationSec);
-    const targetRatio =
-      next.resolutionScale === 'performance' ? 1 : Math.min(window.devicePixelRatio || 1, 2);
-    app.graphicsDevice.maxPixelRatio = targetRatio;
-    app.resizeCanvas();
+    disasterAudio.setEnabled(next.disasterSound);
+    disasterAudio.setVolume(next.disasterVolume);
+    if (next.cameraSpeed !== previous?.cameraSpeed) {
+      const speedMult = next.cameraSpeed === 'slow' ? 0.65 : next.cameraSpeed === 'fast' ? 1.65 : 1;
+      isometricCamera.setPanSpeedMultiplier(speedMult);
+    }
+    if (next.solDurationSec !== previous?.solDurationSec) {
+      solarCycle.setSolDurationSec(next.solDurationSec);
+    }
+    if (next.resolutionScale !== previous?.resolutionScale) {
+      app.graphicsDevice.maxPixelRatio =
+        next.resolutionScale === 'performance' ? 1 : Math.min(window.devicePixelRatio || 1, 2);
+      app.resizeCanvas();
+    }
   };
 
   const syncFlowMode = (): void => {
     const isPlaying = flowState === 'playing' && !settingsOpen;
+    if (!isPlaying) disasterAudio.stop();
     app.timeScale = isPlaying ? 1 : 0;
     buildSystem.setEnabled(isPlaying);
     isometricCamera.setInputEnabled(isPlaying);
@@ -201,6 +220,7 @@ export async function bootstrapGame(): Promise<void> {
         science: scienceMission.getStatus(getScienceConditions(base)),
         sol: latestSol,
         activeEvent: latestActiveEvent,
+        waitingForConstruction: !missionStarted,
         status: flowState,
         endReason,
       },
@@ -214,6 +234,9 @@ export async function bootstrapGame(): Promise<void> {
   };
 
   const startMission = (): void => {
+    disasterAudio.stop();
+    disasterAudio.unlock();
+    missionStarted = false;
     buildSystem.clearPlacedBuildings();
     eventManager.reset();
     const diff = DIFFICULTY_COOLDOWNS[difficulty];
@@ -247,6 +270,7 @@ export async function bootstrapGame(): Promise<void> {
 
   const resumeGame = (): void => {
     if (flowState !== 'paused') return;
+    disasterAudio.unlock();
     settingsOpen = false;
     flowState = 'playing';
     syncFlowMode();
@@ -254,6 +278,7 @@ export async function bootstrapGame(): Promise<void> {
   };
 
   const goToMainMenu = (): void => {
+    missionStarted = false;
     buildSystem.clearPlacedBuildings();
     eventManager.reset();
     solarCycle.reset();
@@ -309,7 +334,8 @@ export async function bootstrapGame(): Promise<void> {
         pushHudUpdate();
       },
       onUpdateSettings: (next) => {
-        applySettings(next);
+        applySettings(next, settings);
+        disasterAudio.unlock();
         pushHudUpdate();
       },
       onSelectLoadout: (nextLoadout) => {
@@ -359,6 +385,12 @@ export async function bootstrapGame(): Promise<void> {
 
   let lastRealTimeMs = performance.now();
 
+  const updateTerrainFocus = (): void => {
+    const focusXZ = { x: state.focusTarget.x, z: state.focusTarget.z };
+    app.fire(WorldBridgeEvent.WALKER_POSE_UPDATED, focusXZ);
+    app.fire(TerrainCameraEvent.STATE_UPDATED, focusXZ);
+  };
+
   app.on('update', (rawDt: number) => {
     const nowMs = performance.now();
     const realDt = Math.min(0.05, Math.max(0.001, (nowMs - lastRealTimeMs) / 1000));
@@ -368,9 +400,7 @@ export async function bootstrapGame(): Promise<void> {
       isometricCamera.orbitIdle(realDt * 5.5);
       isometricCamera.update(realDt, state, camera, sampleHeight);
       camera.setPosition(state.cameraPos.x, state.cameraPos.y, state.cameraPos.z);
-      const focusXZ = { x: state.focusTarget.x, z: state.focusTarget.z };
-      app.fire(WorldBridgeEvent.WALKER_POSE_UPDATED, focusXZ);
-      app.fire(TerrainCameraEvent.STATE_UPDATED, focusXZ);
+      updateTerrainFocus();
       return;
     }
 
@@ -382,10 +412,20 @@ export async function bootstrapGame(): Promise<void> {
     const dt = Math.min(Math.max(0, safeRawDt), 0.1);
     if (dt <= 0) return;
 
-    state.elapsedTime += dt;
-
     isometricCamera.update(dt, state, camera, sampleHeight);
 
+    if (!missionStarted) {
+      while (isometricCamera.consumeEventTrigger()) continue;
+      missionStarted = buildSystem.getPlacedCount() > 0;
+      if (!missionStarted) {
+        camera.setPosition(state.cameraPos.x, state.cameraPos.y, state.cameraPos.z);
+        buildSystem.update();
+        updateTerrainFocus();
+        return;
+      }
+    }
+
+    state.elapsedTime += dt;
     const solState = solarCycle.update(dt, state.focusTarget);
     latestSol = solState;
 
@@ -408,7 +448,15 @@ export async function bootstrapGame(): Promise<void> {
     }
 
     const eventStep = eventManager.update(dt, eventCtx);
+    const event = eventStep.activeEvent;
+    if (event && (
+      event.type !== latestActiveEvent?.type ||
+      (latestActiveEvent.phase === 'active' && event.phase === 'warning')
+    )) {
+      survivalSystem.beginDisaster();
+    }
     latestActiveEvent = eventStep.activeEvent;
+    disasterAudio.update(latestActiveEvent, eventStep.groundImpact);
 
     camera.setPosition(
       state.cameraPos.x + eventStep.shakeOffset.x,
@@ -427,21 +475,7 @@ export async function bootstrapGame(): Promise<void> {
             : 'clear'
         : 'clear';
 
-    const buildingsHit = eventStep.buildingsHitThisFrame ?? 0;
-    if (buildingsHit > 0) {
-      survivalSystem.applyImpact(buildingsHit);
-    }
-
-    if (
-      eventStep.damageThisFrame > 0 &&
-      (eventStep.activeEvent?.type === 'dust_storm' ||
-        buildSystem.getPlacedCount() === 0 ||
-        buildingsHit === 0)
-    ) {
-      survivalSystem.applyContinuousDamage(
-        eventStep.damageThisFrame * (buildingsHit > 0 ? 0 : 1),
-      );
-    }
+    survivalSystem.applyDisasterDamage(eventStep.buildingsHitThisFrame ?? 0, eventStep.damageThisFrame);
 
     survivalSystem.update(dt, {
       buildings: buildSystem.getPlacedBuildings(),
@@ -474,9 +508,7 @@ export async function bootstrapGame(): Promise<void> {
 
     pushHudUpdate();
 
-    const focusXZ = { x: state.focusTarget.x, z: state.focusTarget.z };
-    app.fire(WorldBridgeEvent.WALKER_POSE_UPDATED, focusXZ);
-    app.fire(TerrainCameraEvent.STATE_UPDATED, focusXZ);
+    updateTerrainFocus();
   });
 
   const onBeforeUnload = (): void => {
@@ -488,6 +520,7 @@ export async function bootstrapGame(): Promise<void> {
     buildSystem.dispose();
     isometricCamera.dispose();
     eventManager.destroy();
+    disasterAudio.dispose();
     terrainManager.destroy();
   };
   window.addEventListener('beforeunload', onBeforeUnload);

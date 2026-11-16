@@ -26,6 +26,7 @@ export interface EventStepResult {
   productionMultiplier: number;
   shakeOffset: Vec3XYZ;
   buildingsHitThisFrame?: number;
+  groundImpact?: 'meteor' | 'lightning';
   activeEvent: ActiveEventInfo | null;
 }
 

@@ -1,0 +1,4 @@
+Thunderclap by Fission9, released under CC0 1.0 Universal.
+Source: https://freesound.org/people/Fission9/sounds/534023/
+License: https://creativecommons.org/publicdomain/zero/1.0/
+Game edit: trimmed, mixed to mono, level-adjusted and encoded as MP3.

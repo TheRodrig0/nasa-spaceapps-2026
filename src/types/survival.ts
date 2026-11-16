@@ -36,6 +36,7 @@ export interface BaseSurvivalState {
   readonly sol?: SolarCycleState;
   readonly activeEvent?: ActiveEventInfo | null;
   readonly science?: ScienceMissionStatus;
+  readonly waitingForConstruction?: boolean;
   readonly status?: 'menu' | 'playing' | 'paused' | 'victory' | 'defeat';
   readonly endReason?: string;
 }

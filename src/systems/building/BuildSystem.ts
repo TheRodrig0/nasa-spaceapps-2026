@@ -83,6 +83,7 @@ export class BuildSystem {
   private pointerY = 0;
   private pointerInside = false;
   private uidCounter = 1;
+  private placementRevision = 0;
 
   private readonly nearVec = new pc.Vec3();
   private readonly farVec = new pc.Vec3();
@@ -216,6 +217,7 @@ export class BuildSystem {
   }
 
   public clearPlacedBuildings(): void {
+    this.placementRevision++;
     const children = [...this.entity.children];
     for (const child of children) {
       if (child !== this.previewRoot) {
@@ -277,6 +279,7 @@ export class BuildSystem {
   }
 
   public dispose(): void {
+    this.placementRevision++;
     this.canvas.removeEventListener('mousemove', this.handleMouseMove);
     this.canvas.removeEventListener('mouseleave', this.handleMouseLeave);
     this.canvas.removeEventListener('mousedown', this.handleMouseDown);
@@ -596,6 +599,7 @@ export class BuildSystem {
   }
 
   private async placeFromPreview(preview: PlacementPreview): Promise<void> {
+    const revision = this.placementRevision;
     if (
       this.economyHooks &&
       !this.economyHooks.canBuild(preview.definition.id, this.placedBuildings)
@@ -622,6 +626,7 @@ export class BuildSystem {
 
     try {
       const container = await this.loadGlb(preview.definition.glbFile);
+      if (revision !== this.placementRevision) return;
 
       if (
         this.economyHooks &&
@@ -656,6 +661,7 @@ export class BuildSystem {
       this.placedBuildings.push(placed);
       this.emitChange();
     } catch {
+      if (revision !== this.placementRevision) return;
       // Roll back cell reservation if asset load fails
       for (const cell of preview.cells) {
         this.occupiedCells.delete(cellKey(cell.gx, cell.gz));

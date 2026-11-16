@@ -24,6 +24,7 @@ export class BaseSurvivalSystem {
   private impactCount = 0;
   private impactAlertTime = 0;
   private damageAccumulator = 0;
+  private remainingDisasterDamage: number = COLONY_BALANCE.maxDamagePerDisaster;
   private battery = 0;
   private bonusBatteryCapacity = 0;
   private impactDamageMult = 1;
@@ -47,6 +48,7 @@ export class BaseSurvivalSystem {
     this.impactCount = 0;
     this.impactAlertTime = 0;
     this.damageAccumulator = 0;
+    this.beginDisaster();
     this.bonusBatteryCapacity = initBattery;
     this.battery = initBattery;
     this.impactDamageMult = options?.impactDamageMult ?? 1;
@@ -171,17 +173,24 @@ export class BaseSurvivalSystem {
     return true;
   }
 
-  public applyImpact(buildingsHit = 1): void {
-    if (!Number.isInteger(buildingsHit) || buildingsHit <= 0 || this.integrity === 0) return;
+  public beginDisaster(): void {
+    this.remainingDisasterDamage = COLONY_BALANCE.maxDamagePerDisaster;
+  }
 
-    const damage = Math.max(
-      1,
-      Math.round(COLONY_BALANCE.damagePerBuildingHit * buildingsHit * this.impactDamageMult),
+  public applyDisasterDamage(buildingsHit: number, continuousDamage: number): void {
+    const hit = buildingsHit > 0;
+    const damage = Math.min(
+      this.remainingDisasterDamage,
+      hit ? COLONY_BALANCE.damagePerBuildingHit * buildingsHit : continuousDamage,
     );
-    this.integrity = Math.max(0, this.integrity - damage);
-    if (this.integrity === 0) this.miningRate = 0;
-    this.impactCount += 1;
-    this.impactAlertTime = IMPACT_ALERT_SECONDS;
+    if (!Number.isFinite(damage) || damage <= 0 || this.integrity === 0) return;
+
+    this.remainingDisasterDamage = Math.max(0, this.remainingDisasterDamage - damage);
+    this.applyContinuousDamage(damage);
+    if (hit) {
+      this.impactCount += 1;
+      this.impactAlertTime = IMPACT_ALERT_SECONDS;
+    }
   }
 
   public applyContinuousDamage(amount: number): void {
@@ -193,6 +202,7 @@ export class BaseSurvivalSystem {
 
     this.damageAccumulator -= points;
     this.integrity = Math.max(0, this.integrity - points);
+    if (this.integrity === 0) this.miningRate = 0;
     if (this.integrity === 0) this.miningRate = 0;
     this.impactAlertTime = Math.max(this.impactAlertTime, 1.5);
   }

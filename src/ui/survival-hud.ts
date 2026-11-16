@@ -13,6 +13,8 @@ export interface GameSettings {
   cameraSpeed: 'slow' | 'normal' | 'fast';
   resolutionScale: 'performance' | 'native';
   solDurationSec: 36 | 48 | 72;
+  disasterSound: boolean;
+  disasterVolume: number;
 }
 
 export interface SurvivalHudMeta {
@@ -38,6 +40,28 @@ export interface SurvivalHudActions {
 
 const units = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 0 });
 
+const hudStackStyle = {
+  position: 'fixed',
+  top: '16px',
+  left: '16px',
+  zIndex: 10,
+  pointerEvents: 'none',
+  width: 'min(316px, calc(100% - 32px))',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '12px',
+  color: '#f5ece6',
+  font: '14px/1.35 system-ui, sans-serif',
+} as const;
+
+const hudPanelStyle = {
+  padding: '12px 14px',
+  border: '1px solid #633c28',
+  borderRadius: '12px',
+  background: '#20130e',
+  boxShadow: '0 8px 24px rgba(0, 0, 0, 0.35)',
+};
+
 function ScienceObjective({ science, onAction, paused }: {
   science: ScienceMissionStatus;
   onAction: () => void;
@@ -54,7 +78,7 @@ function ScienceObjective({ science, onAction, paused }: {
 
   return h(
     'section',
-    { 'aria-label': 'Missão científica', style: { marginBottom: '10px', paddingBottom: '8px', borderBottom: '1px solid #4d2f20' } },
+    { 'aria-label': 'Missão científica', style: { marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #4d2f20' } },
     h('h3', { style: { margin: '0 0 3px', fontSize: '12px', color: '#ffb078' } }, title),
     science.phase === 'monitoring'
       ? h('p', { style: { margin: '0 0 3px', fontSize: '12px' } }, `${science.secondsRecorded} / ${MONITORING_SECONDS} s registrados`)
@@ -160,6 +184,7 @@ function SurvivalHud({
     sol,
     activeEvent,
     science,
+    waitingForConstruction,
     status = 'playing',
     endReason,
   } = state;
@@ -184,26 +209,11 @@ function SurvivalHud({
     'div',
     null,
     !isMenu
-      ? h(
+      ? h('div', { style: hudStackStyle }, h(
           'section',
           {
             'aria-labelledby': 'survival-hud-title',
-            style: {
-              position: 'fixed',
-              top: '16px',
-              left: '16px',
-              zIndex: 10,
-              pointerEvents: 'none',
-              boxSizing: 'border-box',
-              width: 'min(316px, calc(100% - 32px))',
-              padding: '12px 14px',
-              border: '1px solid #633c28',
-              borderRadius: '12px',
-              background: '#20130e',
-              color: '#f5ece6',
-              font: '14px/1.35 system-ui, sans-serif',
-              boxShadow: '0 8px 24px rgba(0, 0, 0, 0.35)',
-            },
+            style: hudPanelStyle,
           },
           h(
             'div',
@@ -286,27 +296,9 @@ function SurvivalHud({
                 },
               })
             : null,
-          h(
-            'div',
-            {
-              style: {
-                marginBottom: '10px',
-                paddingBottom: '8px',
-                borderBottom: '1px solid #4d2f20',
-              },
-            },
-            h(
-              'div',
-              { style: { fontSize: '12px', fontWeight: '600', color: '#ffb078' } },
-              `Etapa ${stage}/5 · ${stageTitle}`,
-            ),
-            h(
-              'div',
-              { style: { fontSize: '11.5px', color: '#d3bbb0', marginTop: '2px' } },
-              stageGoal,
-            ),
-          ),
-          science ? h(ScienceObjective, { science, onAction: actions.onScienceAction, paused: isPaused }) : null,
+          waitingForConstruction
+            ? h('p', { style: { margin: '0 0 8px', fontSize: '12px', color: '#ffb078' } }, 'Instale a primeira construção para iniciar o Sol 1.')
+            : null,
           h(
             'dl',
             { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', margin: 0 } },
@@ -426,7 +418,17 @@ function SurvivalHud({
                   )
                 : null,
           ),
-        )
+        ), h(
+          'section',
+          { 'aria-label': 'Objetivos da operação', style: hudPanelStyle },
+          h(
+            'h2',
+            { style: { margin: '0 0 2px', fontSize: '12px', fontWeight: '600', color: '#ffb078' } },
+            `Etapa ${stage}/5 · ${stageTitle}`,
+          ),
+          h('p', { style: { margin: 0, fontSize: '11.5px', color: '#d3bbb0' } }, stageGoal),
+          science ? h(ScienceObjective, { science, onAction: actions.onScienceAction, paused: isPaused }) : null,
+        ))
       : null,
 
     isMenu && !meta.settingsOpen
@@ -637,6 +639,9 @@ function SurvivalHud({
             {
               style: {
                 width: 'min(380px, calc(100% - 32px))',
+                boxSizing: 'border-box',
+                maxHeight: 'calc(100% - 32px)',
+                overflowY: 'auto',
                 padding: '20px',
                 borderRadius: '14px',
                 border: '1px solid #633c28',
@@ -710,6 +715,36 @@ function SurvivalHud({
                   `${sec}s`,
                 ),
               ),
+            ),
+            h(
+              'div',
+              { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '6px' } },
+              h('label', { htmlFor: 'disaster-volume', style: { fontSize: '12px', fontWeight: '600' } }, 'Volume dos desastres'),
+              h('button', {
+                type: 'button',
+                'aria-label': 'Silenciar desastres',
+                'aria-pressed': !meta.settings.disasterSound,
+                onClick: () => actions.onUpdateSettings({ ...meta.settings, disasterSound: !meta.settings.disasterSound }),
+                style: btnStyle(!meta.settings.disasterSound),
+              }, meta.settings.disasterSound ? 'Silenciar' : 'Reativar som'),
+            ),
+            h(
+              'div',
+              { style: { display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' } },
+              h('input', {
+                id: 'disaster-volume',
+                type: 'range',
+                min: 0,
+                max: 100,
+                value: meta.settings.disasterVolume,
+                'aria-valuetext': `${meta.settings.disasterVolume}%`,
+                onInput: (event) => actions.onUpdateSettings({ ...meta.settings, disasterVolume: event.currentTarget.valueAsNumber }),
+                style: { flex: '1', minWidth: 0, margin: 0, accentColor: '#ff994e' },
+              }),
+              h('span', {
+                'aria-hidden': 'true',
+                style: { minWidth: '4ch', textAlign: 'right', fontSize: '12px', fontVariantNumeric: 'tabular-nums' },
+              }, `${meta.settings.disasterVolume}%`),
             ),
             h('div', { style: { fontSize: '12px', fontWeight: '600', marginBottom: '6px' } }, 'Controles'),
             h(
@@ -860,7 +895,9 @@ export function mountSurvivalHud(
       lastMeta?.settingsOpen === meta.settingsOpen &&
       lastMeta?.settings.cameraSpeed === meta.settings.cameraSpeed &&
       lastMeta?.settings.resolutionScale === meta.settings.resolutionScale &&
-      lastMeta?.settings.solDurationSec === meta.settings.solDurationSec;
+      lastMeta?.settings.solDurationSec === meta.settings.solDurationSec &&
+      lastMeta?.settings.disasterSound === meta.settings.disasterSound &&
+      lastMeta?.settings.disasterVolume === meta.settings.disasterVolume;
 
     if (
       metaSame &&
@@ -883,6 +920,7 @@ export function mountSurvivalHud(
       last.science?.phase === state.science?.phase &&
       last.science?.secondsRecorded === state.science?.secondsRecorded &&
       last.science?.blockedReason === state.science?.blockedReason &&
+      last.waitingForConstruction === state.waitingForConstruction &&
       last.activeEvent?.type === state.activeEvent?.type &&
       last.activeEvent?.phase === state.activeEvent?.phase &&
       lastRemaining === activeRemaining &&

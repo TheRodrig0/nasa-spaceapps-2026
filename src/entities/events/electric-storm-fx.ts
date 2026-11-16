@@ -873,10 +873,12 @@ export class ElectricStormFx implements WorldEventHandler {
     // ==========================================
     // 5. Active Phase Lightning Strikes & Gameplay
     // ==========================================
+    let strikeOccurred = false;
     if (phase === 'active' && phaseElapsed < 12.5) {
       this.nextStrikeTimer -= safeDt;
       if (this.nextStrikeTimer <= 0) {
         this.triggerLightningStrike(ctx);
+        strikeOccurred = true;
         this.nextStrikeTimer =
           MIN_STRIKE_INTERVAL + Math.random() * (MAX_STRIKE_INTERVAL - MIN_STRIKE_INTERVAL);
       }
@@ -1019,6 +1021,7 @@ export class ElectricStormFx implements WorldEventHandler {
       productionMultiplier: phase === 'warning' ? 1.0 : ACTIVE_PRODUCTION_MULTIPLIER,
       shakeOffset,
       buildingsHitThisFrame,
+      groundImpact: strikeOccurred ? 'lightning' : undefined,
     };
   }
 

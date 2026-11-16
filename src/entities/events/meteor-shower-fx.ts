@@ -1175,6 +1175,7 @@ export class MeteorShowerFx implements WorldEventHandler {
     }
 
     let buildingsHitThisFrame = 0;
+    let impactOccurred = false;
 
     // Active phase: Staggered falling meteors
     for (let i = 0; i < this.activeCount; i++) {
@@ -1301,6 +1302,7 @@ export class MeteorShowerFx implements WorldEventHandler {
         }
 
         if (progress >= 1.0) {
+          impactOccurred = true;
           // IMPACT DETONATION
           slot.state = 'impacted';
           slot.fallElapsed = slot.fallDuration;
@@ -1569,6 +1571,7 @@ export class MeteorShowerFx implements WorldEventHandler {
       productionMultiplier: 1.0,
       shakeOffset: this.getShakeOffset(phaseElapsed),
       buildingsHitThisFrame,
+      groundImpact: impactOccurred ? 'meteor' : undefined,
     };
   }
 
