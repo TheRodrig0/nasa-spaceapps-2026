@@ -11,6 +11,7 @@ import type { ColonyWeather } from '../systems/index.ts';
 import { TerrainCameraEvent, WorldBridgeEvent } from '../types/index.ts';
 import type { ActiveEventInfo, EventUpdateContext, GameState } from '../types/index.ts';
 import { mountBuildMenu, mountSurvivalHud } from '../ui/index.ts';
+import { LOADOUT_CONFIGS } from '../systems/survival/loadouts.ts';
 import type { DifficultyId, GameSettings, LoadoutId } from '../ui/index.ts';
 import { IsometricCameraController } from './input-controller.ts';
 import { createCrewSandboxApp, createMainCamera, createMarsSun } from './scene-setup.ts';
@@ -29,12 +30,6 @@ const DEFAULT_SETTINGS: GameSettings = {
   resolutionScale: 'native',
   solDurationSec: 48,
 };
-
-const LOADOUT_CONFIGS = {
-  standard: { startingOre: 55, initialBattery: 0, impactDamageMult: 1 },
-  hull: { startingOre: 45, initialBattery: 0, impactDamageMult: 0.75 },
-  battery: { startingOre: 45, initialBattery: 40, impactDamageMult: 1 },
-} as const;
 
 const DIFFICULTY_COOLDOWNS = {
   calm: { minSec: 32, maxSec: 48 },
@@ -443,12 +438,12 @@ export async function bootstrapGame(): Promise<void> {
       eventManager.stopCurrentEvent();
       syncFlowMode();
     } else if (solState.completed) {
-      if (nextSurvival.stage >= 4) {
+      if (nextSurvival.allStagesCompleted) {
         flowState = 'victory';
-        endReason = 'A colônia evoluiu e sobreviveu aos 10 ciclos solares em Marte.';
+        endReason = 'A equipe de revezamento chegou. O posto está pronto para continuar a pesquisa.';
       } else {
         flowState = 'defeat';
-        endReason = 'Colônia incompleta ao fim do 10º Sol (alcance ao menos a Etapa 4).';
+        endReason = 'A equipe de revezamento chegou antes de o posto ficar autossuficiente.';
       }
       eventManager.stopCurrentEvent();
       syncFlowMode();

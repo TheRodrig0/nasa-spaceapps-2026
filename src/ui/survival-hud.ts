@@ -1,5 +1,6 @@
 import { h, render } from 'preact';
 import type { BaseSurvivalState } from '../systems/survival/BaseSurvivalSystem.ts';
+import { LOADOUT_CONFIGS } from '../systems/survival/loadouts.ts';
 import type { SolarPhase } from '../types/index.ts';
 import { COLONY_BALANCE } from '../systems/survival/economy.ts';
 
@@ -131,9 +132,9 @@ function SurvivalHud({
   const showEndModal = status === 'victory' || status === 'defeat';
 
   const loadouts: ReadonlyArray<{ id: LoadoutId; label: string; desc: string }> = [
-    { id: 'standard', label: 'Padrão', desc: '55 UJ minério · 100% casco' },
-    { id: 'hull', label: 'Casco Reforçado', desc: '45 UJ · -25% dano' },
-    { id: 'battery', label: 'Reserva Elétrica', desc: '45 UJ · +40 bateria' },
+    { id: 'standard', label: 'Padrão', desc: `${LOADOUT_CONFIGS.standard.startingOre} UJ de minério` },
+    { id: 'hull', label: 'Casco Reforçado', desc: `${LOADOUT_CONFIGS.hull.startingOre} UJ · −25% de dano` },
+    { id: 'battery', label: 'Reserva Elétrica', desc: `${LOADOUT_CONFIGS.battery.startingOre} UJ · +${LOADOUT_CONFIGS.battery.initialBattery} de bateria` },
   ];
 
   const difficulties: ReadonlyArray<{ id: DifficultyId; label: string; desc: string }> = [
@@ -421,11 +422,16 @@ function SurvivalHud({
                 boxShadow: '0 16px 40px rgba(0, 0, 0, 0.55)',
               },
             },
-            h('h1', { style: { margin: '0 0 4px', fontSize: '20px', color: '#fff3e6' } }, 'Missão Marte'),
+            h('h1', { style: { margin: '0 0 4px', fontSize: '20px', color: '#fff3e6' } }, 'Missão Marte · Posto Aurora'),
             h(
               'p',
-              { style: { margin: '0 0 16px', fontSize: '13px', color: '#d3bbb0' } },
-              'Construa a colônia por etapas e sobreviva a 10 ciclos solares.',
+              { style: { margin: '0 0 8px', fontSize: '13px', color: '#d3bbb0' } },
+              'Uma chuva de meteoros interrompeu a pesquisa em Marte. Sua equipe tem 10 sóis para montar um posto científico que possa ser assumido pela próxima tripulação.',
+            ),
+            h(
+              'p',
+              { style: { margin: '0 0 16px', fontSize: '13px', color: '#fff3e6' } },
+              'Conclua as cinco etapas de autossuficiência e mantenha o posto de pé até o revezamento.',
             ),
             h('div', { style: { fontSize: '12px', fontWeight: '600', marginBottom: '6px' } }, 'Perfil inicial'),
             h(
@@ -735,7 +741,7 @@ function SurvivalHud({
                   color: status === 'victory' ? '#7cdec0' : '#ff8585',
                 },
               },
-              status === 'victory' ? 'Missão Concluída — 10 Sols!' : 'Missão Encerrada',
+              status === 'victory' ? 'Posto Aurora entregue' : 'Missão encerrada',
             ),
             h(
               'p',

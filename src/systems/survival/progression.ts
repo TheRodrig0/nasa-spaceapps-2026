@@ -59,6 +59,7 @@ export function evaluateProgression(
   ore: number,
   generation: number,
   demand: number,
+  currentStage = 1,
 ): { unlockedStage: number; allStagesCompleted: boolean } {
   const counts = new Map<string, number>();
   for (const { definitionId } of buildings) {
@@ -67,19 +68,19 @@ export function evaluateProgression(
   const has = (id: string, min = 1): boolean => (counts.get(id) ?? 0) >= min;
   const miners = (counts.get('machine_plant') ?? 0) + (counts.get('drone_control') ?? 0);
 
-  let stage = 1;
+  let stage = Math.max(1, Math.min(5, currentStage));
   const stage1Done = has('main_house') && (has('solar_panel') || has('solar_generator'));
-  if (stage1Done) stage = 2;
+  if (stage === 1 && stage1Done) stage = 2;
 
   const stage2Done = stage >= 2 && has('home_colonists') && has('farm');
-  if (stage2Done) stage = 3;
+  if (stage === 2 && stage2Done) stage = 3;
 
   const stage3Done = stage >= 3 && has('machine_plant') && has('battery') && ore + 1e-6 >= 60;
-  if (stage3Done) stage = 4;
+  if (stage === 3 && stage3Done) stage = 4;
 
   const stage4Done =
     stage >= 4 && has('geothermal_generator') && has('resource_warehouse') && miners >= 2;
-  if (stage4Done) stage = 5;
+  if (stage === 4 && stage4Done) stage = 5;
 
   const stage5Done =
     stage >= 5 && (has('reactor') || (miners >= 3 && generation + 1e-6 >= demand));
@@ -94,8 +95,8 @@ export function evaluateColonyStage(
   generation: number,
   demand: number,
 ): ProgressionStatus {
-  const evalResult = evaluateProgression(buildings, ore, generation, demand);
-  const stage = Math.max(1, Math.min(5, Math.max(currentMaxStage, evalResult.unlockedStage)));
+  const evalResult = evaluateProgression(buildings, ore, generation, demand, currentMaxStage);
+  const stage = evalResult.unlockedStage;
   const def = COLONY_STAGES[stage - 1] ?? COLONY_STAGES[0];
   return {
     stage,

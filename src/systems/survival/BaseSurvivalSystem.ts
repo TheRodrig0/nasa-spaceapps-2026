@@ -106,8 +106,8 @@ export class BaseSurvivalSystem {
     );
     this.maxStageReached = prog.stage;
     this.stageTitle = prog.title;
-    this.stageGoal = prog.goalText;
-    this.allStagesCompleted = prog.allStagesCompleted;
+    this.allStagesCompleted ||= prog.allStagesCompleted;
+    this.stageGoal = this.allStagesCompleted ? 'Mantenha o posto de pé até a chegada da equipe no fim do 10º Sol' : prog.goalText;
   }
 
   public canBuild(definitionId: string, buildings: ColonyInputs['buildings']): boolean {
@@ -166,8 +166,8 @@ export class BaseSurvivalSystem {
     );
     this.maxStageReached = prog.stage;
     this.stageTitle = prog.title;
-    this.stageGoal = prog.goalText;
-    this.allStagesCompleted = prog.allStagesCompleted;
+    this.allStagesCompleted ||= prog.allStagesCompleted;
+    this.stageGoal = this.allStagesCompleted ? 'Mantenha o posto de pé até a chegada da equipe no fim do 10º Sol' : prog.goalText;
     return true;
   }
 

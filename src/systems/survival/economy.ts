@@ -1,8 +1,8 @@
 export type ColonyWeather = 'clear' | 'dust-storm' | 'electrical-storm';
 
 export const COLONY_BALANCE = {
-  startingOre: 55,
-  baseOreCapacity: 90,
+  startingOre: 120,
+  baseOreCapacity: 120,
   costScalePerDuplicate: 0.35,
   orePerMinerPerSecond: 2,
   damagePerBuildingHit: 25,
