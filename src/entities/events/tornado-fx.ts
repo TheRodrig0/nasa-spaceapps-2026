@@ -489,6 +489,7 @@ export class TornadoFx implements WorldEventHandler {
   private readonly debrisMat: pc.StandardMaterial;
 
   private readonly tornadoes: TornadoInstance[] = [];
+  private readonly hitBuildingUids = new Set<string>();
 
   private isRunning = false;
   private spawnPointsInitialized = false;
@@ -724,6 +725,7 @@ export class TornadoFx implements WorldEventHandler {
   public startWarning(ctx: EventUpdateContext): void {
     this.isRunning = true;
     this.rootEntity.enabled = true;
+    this.hitBuildingUids.clear();
     this.initSpawnPoints(ctx);
 
     for (const t of this.tornadoes) {
@@ -747,12 +749,12 @@ export class TornadoFx implements WorldEventHandler {
       t.y = ctx.sampleHeight(t.x, t.z);
       t.root.setPosition(t.x, t.y, t.z);
 
-      // Wander direction pointing toward colony focus target with angular offset
+      // Drift across the region around the camera focus target with natural angular variation
       const toCenterX = ctx.focusTarget.x - t.x;
       const toCenterZ = ctx.focusTarget.z - t.z;
       const len = Math.hypot(toCenterX, toCenterZ) || 1;
-      const baseSpeed = 36 + i * 8;
-      const angleOffset = i === 0 ? 0.35 : -0.35;
+      const baseSpeed = 38 + i * 6;
+      const angleOffset = (Math.random() - 0.5) * 0.5;
       const cosA = Math.cos(angleOffset);
       const sinA = Math.sin(angleOffset);
       const ndx = toCenterX / len;
@@ -1042,14 +1044,31 @@ export class TornadoFx implements WorldEventHandler {
     let hasBuildingOverlap = false;
     const isMature = scaleMult >= 0.7;
 
-    if (isMature && ctx.buildings.length > 0) {
-      for (const t of this.tornadoes) {
-        for (const b of ctx.buildings) {
-          const bx = b.worldCenter?.x ?? (b.gridX + b.cols * 0.5) * 14;
-          const bz = b.worldCenter?.z ?? (b.gridZ + b.rows * 0.5) * 14;
-          const dx = bx - t.x;
-          const dz = bz - t.z;
-          if (dx * dx + dz * dz <= TORNADO_DAMAGE_RADIUS_SQ) {
+    let buildingsHitThisFrame = 0;
+
+    if (isMature) {
+      if (ctx.buildings.length > 0) {
+        for (const t of this.tornadoes) {
+          for (const b of ctx.buildings) {
+            const bx = b.worldCenter?.x ?? (b.gridX + b.cols * 0.5) * 14;
+            const bz = b.worldCenter?.z ?? (b.gridZ + b.rows * 0.5) * 14;
+            const dx = bx - t.x;
+            const dz = bz - t.z;
+            if (dx * dx + dz * dz <= TORNADO_DAMAGE_RADIUS_SQ) {
+              continuousDamage += TORNADO_DAMAGE_RATE * safeDt;
+              hasBuildingOverlap = true;
+              if (!this.hitBuildingUids.has(b.uid)) {
+                this.hitBuildingUids.add(b.uid);
+                buildingsHitThisFrame += 1;
+              }
+            }
+          }
+        }
+      } else {
+        for (const t of this.tornadoes) {
+          const dx = ctx.focusTarget.x - t.x;
+          const dz = ctx.focusTarget.z - t.z;
+          if (dx * dx + dz * dz <= 75 * 75) {
             continuousDamage += TORNADO_DAMAGE_RATE * safeDt;
             hasBuildingOverlap = true;
           }
@@ -1099,12 +1118,14 @@ export class TornadoFx implements WorldEventHandler {
       damageThisFrame,
       productionMultiplier,
       shakeOffset,
+      buildingsHitThisFrame,
     };
   }
 
   public stop(): void {
     this.isRunning = false;
     this.spawnPointsInitialized = false;
+    this.hitBuildingUids.clear();
     this.rootEntity.enabled = false;
     for (const t of this.tornadoes) {
       t.root.enabled = false;
@@ -1168,25 +1189,14 @@ export class TornadoFx implements WorldEventHandler {
   }
 
   private initSpawnPoints(ctx: EventUpdateContext): void {
-    let centerX = ctx.focusTarget.x;
-    let centerZ = ctx.focusTarget.z;
-
-    if (ctx.buildings.length > 0) {
-      let sumX = 0;
-      let sumZ = 0;
-      for (const b of ctx.buildings) {
-        sumX += b.worldCenter?.x ?? (b.gridX + b.cols * 0.5) * 14;
-        sumZ += b.worldCenter?.z ?? (b.gridZ + b.rows * 0.5) * 14;
-      }
-      centerX = sumX / ctx.buildings.length;
-      centerZ = sumZ / ctx.buildings.length;
-    }
+    const centerX = ctx.focusTarget.x;
+    const centerZ = ctx.focusTarget.z;
 
     const baseAngle = Math.random() * Math.PI * 2;
     const angles = [baseAngle, baseAngle + Math.PI * 0.85 + Math.random() * 0.3];
     const distances = [
-      360 + Math.random() * 80,
-      370 + Math.random() * 80,
+      135 + Math.random() * 45,
+      145 + Math.random() * 45,
     ];
 
     const maxBound = Math.max(100, ctx.worldHalf * 0.82);

@@ -18,12 +18,14 @@ export interface EventUpdateContext {
   buildings: readonly PlacedBuilding[];
   sampleHeight: (x: number, z: number) => number;
   worldHalf: number;
+  solIndex?: number;
 }
 
 export interface EventStepResult {
   damageThisFrame: number;
   productionMultiplier: number;
   shakeOffset: Vec3XYZ;
+  buildingsHitThisFrame?: number;
   activeEvent: ActiveEventInfo | null;
 }
 

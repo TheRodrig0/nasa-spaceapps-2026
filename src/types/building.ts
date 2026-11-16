@@ -5,8 +5,10 @@ export type BuildingCategory = 'casas' | 'energia' | 'mineracao';
 export type CellInvalidReason = 'ok' | 'relief' | 'occupied' | 'bounds';
 
 export interface BuildEconomyHooks {
-  canAfford: (cost: number) => boolean;
-  onSpend: (cost: number) => void;
+  canBuild: (definitionId: string, buildings: readonly PlacedBuilding[]) => boolean;
+  tryPayForBuilding: (definitionId: string, buildings: readonly PlacedBuilding[]) => boolean;
+  getBuildBlockReason?: (definitionId: string, buildings: readonly PlacedBuilding[]) => string | null;
+  getBuildCost?: (definitionId: string, buildings: readonly PlacedBuilding[]) => number;
 }
 
 export interface BuildingDefinition {

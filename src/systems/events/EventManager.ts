@@ -27,8 +27,8 @@ const DEFAULT_MAX_COOLDOWN_SEC = 38;
  * electric storms) across cooldown, warning, and active phases.
  */
 export class EventManager {
-  private readonly minCooldownSec: number;
-  private readonly maxCooldownSec: number;
+  private minCooldownSec: number;
+  private maxCooldownSec: number;
   private readonly handlers = new Map<WorldEventType, WorldEventHandler>();
 
   private phase: WorldEventPhase = 'cooldown';
@@ -151,6 +151,19 @@ export class EventManager {
     this.cooldownRemaining = this.randomCooldown();
   }
 
+  public setCooldownRange(minSec: number, maxSec: number): void {
+    this.minCooldownSec = Math.max(2, minSec);
+    this.maxCooldownSec = Math.max(this.minCooldownSec, maxSec);
+    if (this.phase === 'cooldown') {
+      this.cooldownRemaining = Math.min(this.cooldownRemaining, this.maxCooldownSec);
+    }
+  }
+
+  public reset(): void {
+    this.lastEventType = null;
+    this.stopCurrentEvent();
+  }
+
   /**
    * Ticks the event manager, updating active/warning events or advancing cooldown.
    *
@@ -163,6 +176,7 @@ export class EventManager {
         damageThisFrame: 0,
         productionMultiplier: 1.0,
         shakeOffset: { x: 0, y: 0, z: 0 },
+        buildingsHitThisFrame: 0,
         activeEvent: this.getActiveEvent(),
       };
     }
@@ -178,6 +192,7 @@ export class EventManager {
             damageThisFrame: 0,
             productionMultiplier: 1.0,
             shakeOffset: { x: 0, y: 0, z: 0 },
+            buildingsHitThisFrame: 0,
             activeEvent: this.getActiveEvent(),
           };
         }
@@ -189,6 +204,7 @@ export class EventManager {
         damageThisFrame: 0,
         productionMultiplier: 1.0,
         shakeOffset: { x: 0, y: 0, z: 0 },
+        buildingsHitThisFrame: 0,
         activeEvent: null,
       };
     }
@@ -223,7 +239,7 @@ export class EventManager {
           this.phase = 'cooldown';
           this.phaseElapsed = 0;
           this.phaseDuration = 0;
-          this.cooldownRemaining = this.randomCooldown();
+          this.cooldownRemaining = this.randomCooldown(ctx.solIndex);
         }
       }
     } else if (this.phase === 'active') {
@@ -233,7 +249,7 @@ export class EventManager {
         this.phase = 'cooldown';
         this.phaseElapsed = 0;
         this.phaseDuration = 0;
-        this.cooldownRemaining = this.randomCooldown();
+        this.cooldownRemaining = this.randomCooldown(ctx.solIndex);
       }
     }
 
@@ -256,6 +272,7 @@ export class EventManager {
       damageThisFrame,
       productionMultiplier,
       shakeOffset,
+      buildingsHitThisFrame: Math.max(0, Math.floor(step.buildingsHitThisFrame ?? 0)),
       activeEvent: this.getActiveEvent(),
     };
   }
@@ -300,7 +317,7 @@ export class EventManager {
         this.phase = 'cooldown';
         this.phaseElapsed = 0;
         this.phaseDuration = 0;
-        this.cooldownRemaining = this.randomCooldown();
+        this.cooldownRemaining = this.randomCooldown(ctx.solIndex);
       }
     } else {
       this.phase = 'warning';
@@ -326,7 +343,9 @@ export class EventManager {
     return pool[index];
   }
 
-  private randomCooldown(): number {
-    return this.minCooldownSec + Math.random() * (this.maxCooldownSec - this.minCooldownSec);
+  private randomCooldown(solIndex = 1): number {
+    const sol = Math.max(1, Math.min(10, Math.floor(solIndex || 1)));
+    const scale = sol === 1 ? 1.25 : 1.1 - ((sol - 2) / 8) * 0.62;
+    return (this.minCooldownSec + Math.random() * (this.maxCooldownSec - this.minCooldownSec)) * scale;
   }
 }

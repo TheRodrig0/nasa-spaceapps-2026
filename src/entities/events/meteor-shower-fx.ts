@@ -787,6 +787,7 @@ export class MeteorShowerFx implements WorldEventHandler {
 
   // Pooled slots
   private readonly slots: MeteorSlot[] = [];
+  private readonly hitBuildingUids = new Set<string>();
   private activeCount = 12;
   private targetsInitialized = false;
 
@@ -1102,6 +1103,7 @@ export class MeteorShowerFx implements WorldEventHandler {
     this.stop();
     this.selectTargets(ctx);
     this.targetsInitialized = true;
+    this.hitBuildingUids.clear();
 
     // Activate soft atmospheric shadow decals with gentle warm ember glow at candidate impact sites
     for (let i = 0; i < Math.min(3, this.activeCount); i++) {
@@ -1168,8 +1170,11 @@ export class MeteorShowerFx implements WorldEventHandler {
         damageThisFrame: 0,
         productionMultiplier: 1.0,
         shakeOffset: this.getShakeOffset(phaseElapsed),
+        buildingsHitThisFrame: 0,
       };
     }
+
+    let buildingsHitThisFrame = 0;
 
     // Active phase: Staggered falling meteors
     for (let i = 0; i < this.activeCount; i++) {
@@ -1405,13 +1410,25 @@ export class MeteorShowerFx implements WorldEventHandler {
           // 7. Collision / Damage check: strictly once per meteor within 42 units radius
           if (!slot.damageDealt) {
             slot.damageDealt = true;
-            for (const b of ctx.buildings) {
-              const bx = b.worldCenter?.x ?? (b.gridX + b.cols * 0.5) * 14;
-              const bz = b.worldCenter?.z ?? (b.gridZ + b.rows * 0.5) * 14;
-              const dx = bx - slot.targetX;
-              const dz = bz - slot.targetZ;
-              if (dx * dx + dz * dz <= 42 * 42) {
-                damageThisFrame += 12;
+            if (ctx.buildings.length === 0) {
+              const dx = ctx.focusTarget.x - slot.targetX;
+              const dz = ctx.focusTarget.z - slot.targetZ;
+              if (dx * dx + dz * dz <= 160 * 160) {
+                damageThisFrame += 8;
+              }
+            } else {
+              for (const b of ctx.buildings) {
+                const bx = b.worldCenter?.x ?? (b.gridX + b.cols * 0.5) * 14;
+                const bz = b.worldCenter?.z ?? (b.gridZ + b.rows * 0.5) * 14;
+                const dx = bx - slot.targetX;
+                const dz = bz - slot.targetZ;
+                if (dx * dx + dz * dz <= 42 * 42) {
+                  damageThisFrame += 12;
+                  if (!this.hitBuildingUids.has(b.uid)) {
+                    this.hitBuildingUids.add(b.uid);
+                    buildingsHitThisFrame += 1;
+                  }
+                }
               }
             }
           }
@@ -1551,11 +1568,13 @@ export class MeteorShowerFx implements WorldEventHandler {
       damageThisFrame,
       productionMultiplier: 1.0,
       shakeOffset: this.getShakeOffset(phaseElapsed),
+      buildingsHitThisFrame,
     };
   }
 
   public stop(): void {
     this.targetsInitialized = false;
+    this.hitBuildingUids.clear();
     for (const slot of this.slots) {
       slot.state = 'pending';
       slot.fallElapsed = 0;
@@ -1635,21 +1654,8 @@ export class MeteorShowerFx implements WorldEventHandler {
   }
 
   private selectTargets(ctx: EventUpdateContext): void {
-    let originX = ctx.focusTarget.x;
-    let originZ = ctx.focusTarget.z;
-
-    if (ctx.buildings.length > 0) {
-      let sumX = 0;
-      let sumZ = 0;
-      for (const b of ctx.buildings) {
-        sumX += b.worldCenter?.x ?? (b.gridX + b.cols * 0.5) * 14;
-        sumZ += b.worldCenter?.z ?? (b.gridZ + b.rows * 0.5) * 14;
-      }
-      const avgX = sumX / ctx.buildings.length;
-      const avgZ = sumZ / ctx.buildings.length;
-      originX = avgX * 0.75 + ctx.focusTarget.x * 0.25;
-      originZ = avgZ * 0.75 + ctx.focusTarget.z * 0.25;
-    }
+    const originX = ctx.focusTarget.x;
+    const originZ = ctx.focusTarget.z;
 
     const maxBound = Math.max(80, ctx.worldHalf - 100);
     this.activeCount = 11 + Math.floor(Math.random() * 3); // 11-13 meteors
@@ -1659,31 +1665,10 @@ export class MeteorShowerFx implements WorldEventHandler {
 
     for (let i = 0; i < this.activeCount; i++) {
       const slot = this.slots[i];
-      const targetBuilding =
-        ctx.buildings.length > 0 && Math.random() < 0.35
-          ? ctx.buildings[Math.floor(Math.random() * ctx.buildings.length)]
-          : null;
-
-      let tx: number;
-      let tz: number;
-
-      if (targetBuilding) {
-        const bx =
-          targetBuilding.worldCenter?.x ??
-          (targetBuilding.gridX + targetBuilding.cols * 0.5) * 14;
-        const bz =
-          targetBuilding.worldCenter?.z ??
-          (targetBuilding.gridZ + targetBuilding.rows * 0.5) * 14;
-        const angle = Math.random() * Math.PI * 2;
-        const dist = 4.0 + Math.random() * 24.0;
-        tx = bx + Math.cos(angle) * dist;
-        tz = bz + Math.sin(angle) * dist;
-      } else {
-        const angle = Math.random() * Math.PI * 2;
-        const dist = 50.0 + Math.sqrt(Math.random()) * 390.0;
-        tx = originX + Math.cos(angle) * dist;
-        tz = originZ + Math.sin(angle) * dist;
-      }
+      const angle = Math.random() * Math.PI * 2;
+      const dist = Math.sqrt(Math.random()) * 360;
+      const tx = originX + Math.cos(angle) * dist;
+      const tz = originZ + Math.sin(angle) * dist;
 
       slot.targetX = Math.max(-maxBound, Math.min(maxBound, tx));
       slot.targetZ = Math.max(-maxBound, Math.min(maxBound, tz));

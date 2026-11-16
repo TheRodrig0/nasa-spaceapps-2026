@@ -1,4 +1,5 @@
 import type { ActiveEventInfo } from './events.ts';
+import type { ColonyWeather } from '../systems/survival/economy.ts';
 
 export type SolarPhase = 'dawn' | 'day' | 'dusk' | 'night';
 
@@ -12,19 +13,27 @@ export interface SolarCycleState {
 }
 
 export interface BaseSurvivalState {
-  ore: number;
-  integrity: number;
-  impactCount: number;
-  impactAlert: boolean;
-  activeEvent: ActiveEventInfo | null;
-  energyGen?: number;
-  energyDemand?: number;
-  batteryStored?: number;
-  batteryCapacity?: number;
-  energyRatio?: number;
-  sol?: SolarCycleState;
-  status?: 'playing' | 'victory' | 'defeat';
-  repairCostOre?: number;
-  repairGainIntegrity?: number;
-  canRepair?: boolean;
+  readonly ore: number;
+  readonly oreCapacity: number;
+  readonly integrity: number;
+  readonly impactCount: number;
+  readonly impactAlert: boolean;
+  readonly generation: number;
+  readonly demand: number;
+  readonly battery: number;
+  readonly batteryCapacity: number;
+  readonly miners: number;
+  readonly supportCapacity: number;
+  readonly housing?: number;
+  readonly oxygen?: number;
+  readonly miningRate: number;
+  readonly weather: ColonyWeather;
+  readonly stage: number;
+  readonly stageTitle: string;
+  readonly stageGoal: string;
+  readonly allStagesCompleted?: boolean;
+  readonly sol?: SolarCycleState;
+  readonly activeEvent?: ActiveEventInfo | null;
+  readonly status?: 'menu' | 'playing' | 'paused' | 'victory' | 'defeat';
+  readonly endReason?: string;
 }

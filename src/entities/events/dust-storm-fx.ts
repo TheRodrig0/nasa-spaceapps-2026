@@ -11,7 +11,7 @@ import type {
 const DUST_STORM_WARNING_DURATION = 4;
 const DUST_STORM_ACTIVE_DURATION = 18;
 const DUST_STORM_PRODUCTION_MULTIPLIER = 0.55;
-const ABRASIVE_DAMAGE_RATE = 1.0; // 1.0 dmg/sec per placed building during active
+const ABRASIVE_DAMAGE_RATE = 0.55; // dmg/sec per exposed structure (min 1) during active storm
 
 const DEFAULT_CLOUD_COUNT = 36;
 const DEFAULT_STREAK_COUNT = 200;
@@ -695,9 +695,9 @@ export class DustStormFx implements WorldEventHandler {
       z: (Math.sin(t * 8.6 + 1.2) * 0.54 + Math.cos(t * 13.5) * 0.46) * shakeAmp,
     };
 
-    // Gentle abrasive hull wear per PlacedBuilding in ctx.buildings
-    const buildingCount = ctx.buildings.length;
-    const damageThisFrame = buildingCount * ABRASIVE_DAMAGE_RATE * safeDt;
+    // Gentle abrasive hull wear across exposed base structures (or outpost fallback)
+    const effectiveTargets = Math.max(1, ctx.buildings.length);
+    const damageThisFrame = effectiveTargets * ABRASIVE_DAMAGE_RATE * safeDt;
 
     return {
       damageThisFrame,
