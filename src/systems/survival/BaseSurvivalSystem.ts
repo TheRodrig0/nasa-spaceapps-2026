@@ -197,6 +197,12 @@ export class BaseSurvivalSystem {
     this.impactAlertTime = Math.max(this.impactAlertTime, 1.5);
   }
 
+  public trySpendOre(amount: number): boolean {
+    if (this.integrity === 0 || !Number.isFinite(amount) || amount <= 0 || this.ore < amount) return false;
+    this.ore -= amount;
+    return true;
+  }
+
   public repair(): number {
     if (this.integrity === 0) return 0;
     const { repairOrePerPoint, maxRepairPerAction } = COLONY_BALANCE;

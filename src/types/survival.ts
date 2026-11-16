@@ -1,5 +1,6 @@
 import type { ActiveEventInfo } from './events.ts';
 import type { ColonyWeather } from '../systems/survival/economy.ts';
+import type { ScienceMissionStatus } from '../systems/survival/science-mission.ts';
 
 export type SolarPhase = 'dawn' | 'day' | 'dusk' | 'night';
 
@@ -34,6 +35,7 @@ export interface BaseSurvivalState {
   readonly allStagesCompleted?: boolean;
   readonly sol?: SolarCycleState;
   readonly activeEvent?: ActiveEventInfo | null;
+  readonly science?: ScienceMissionStatus;
   readonly status?: 'menu' | 'playing' | 'paused' | 'victory' | 'defeat';
   readonly endReason?: string;
 }

@@ -12,6 +12,7 @@ import { TerrainCameraEvent, WorldBridgeEvent } from '../types/index.ts';
 import type { ActiveEventInfo, EventUpdateContext, GameState } from '../types/index.ts';
 import { mountBuildMenu, mountSurvivalHud } from '../ui/index.ts';
 import { LOADOUT_CONFIGS } from '../systems/survival/loadouts.ts';
+import { ScienceMission } from '../systems/survival/science-mission.ts';
 import type { DifficultyId, GameSettings, LoadoutId } from '../ui/index.ts';
 import { IsometricCameraController } from './input-controller.ts';
 import { createCrewSandboxApp, createMainCamera, createMarsSun } from './scene-setup.ts';
@@ -107,6 +108,14 @@ export async function bootstrapGame(): Promise<void> {
 
   const solarCycle = new SolarCycleSystem(app, sunLight);
   const survivalSystem = new BaseSurvivalSystem();
+  const scienceMission = new ScienceMission();
+  const getScienceConditions = (base = survivalSystem.getState()) => ({
+    hasWarehouse: buildSystem.getPlacedBuildings().some(({ definitionId }) => definitionId === 'resource_warehouse'),
+    ore: base.ore,
+    generation: base.generation,
+    demand: base.demand,
+    infrastructureReady: base.allStagesCompleted === true,
+  });
 
   buildSystem.setEconomyHooks({
     canBuild: (definitionId, buildings) => survivalSystem.canBuild(definitionId, buildings),
@@ -185,9 +194,11 @@ export async function bootstrapGame(): Promise<void> {
   };
 
   const pushHudUpdate = (): void => {
+    const base = survivalSystem.getState();
     survivalHud.update(
       {
-        ...survivalSystem.getState(),
+        ...base,
+        science: scienceMission.getStatus(getScienceConditions(base)),
         sol: latestSol,
         activeEvent: latestActiveEvent,
         status: flowState,
@@ -209,6 +220,7 @@ export async function bootstrapGame(): Promise<void> {
     eventManager.setCooldownRange(diff.minSec, diff.maxSec);
     solarCycle.reset();
     survivalSystem.reset(LOADOUT_CONFIGS[loadout]);
+    scienceMission.reset();
 
     endReason = undefined;
     latestActiveEvent = null;
@@ -246,6 +258,7 @@ export async function bootstrapGame(): Promise<void> {
     eventManager.reset();
     solarCycle.reset();
     survivalSystem.reset(LOADOUT_CONFIGS[loadout]);
+    scienceMission.reset();
     endReason = undefined;
     latestActiveEvent = null;
     latestSol = solarCycle.getState();
@@ -270,6 +283,12 @@ export async function bootstrapGame(): Promise<void> {
       settingsOpen,
     },
     {
+      onScienceAction: () => {
+        if (flowState !== 'playing' || settingsOpen) return;
+        if (scienceMission.advance(getScienceConditions(), amount => survivalSystem.trySpendOre(amount))) {
+          pushHudUpdate();
+        }
+      },
       onRepair: () => {
         if (flowState !== 'playing') return;
         if (survivalSystem.repair() > 0) {
@@ -432,18 +451,22 @@ export async function bootstrapGame(): Promise<void> {
     });
 
     const nextSurvival = survivalSystem.getState();
+    const scienceConditions = getScienceConditions(nextSurvival);
+    if (nextSurvival.integrity > 0) scienceMission.update(dt, scienceConditions);
     if (nextSurvival.integrity <= 0) {
       flowState = 'defeat';
       endReason = 'A integridade estrutural da base chegou a 0%.';
       eventManager.stopCurrentEvent();
       syncFlowMode();
     } else if (solState.completed) {
-      if (nextSurvival.allStagesCompleted) {
+      if (nextSurvival.allStagesCompleted && scienceMission.getStatus(scienceConditions).phase === 'complete') {
         flowState = 'victory';
-        endReason = 'A equipe de revezamento recebeu o Posto Aurora em operação. A pesquisa dos tremores pode continuar.';
+        endReason = 'A equipe de revezamento recebeu o Posto Aurora em operação, com a amostra M01 e o registro dos tremores.';
       } else {
         flowState = 'defeat';
-        endReason = 'A equipe de revezamento chegou antes de o posto ficar autossuficiente.';
+        endReason = nextSurvival.allStagesCompleted
+          ? 'O revezamento chegou antes do envio dos dados da missão.'
+          : 'A equipe de revezamento chegou antes de o posto ficar autossuficiente.';
       }
       eventManager.stopCurrentEvent();
       syncFlowMode();

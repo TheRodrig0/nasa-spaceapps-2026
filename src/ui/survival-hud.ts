@@ -3,6 +3,8 @@ import type { BaseSurvivalState } from '../systems/survival/BaseSurvivalSystem.t
 import { LOADOUT_CONFIGS } from '../systems/survival/loadouts.ts';
 import type { SolarPhase } from '../types/index.ts';
 import { COLONY_BALANCE } from '../systems/survival/economy.ts';
+import { MONITORING_SECONDS, SAMPLE_ORE_COST } from '../systems/survival/science-mission.ts';
+import type { ScienceMissionStatus } from '../systems/survival/science-mission.ts';
 
 export type LoadoutId = 'standard' | 'hull' | 'battery';
 export type DifficultyId = 'calm' | 'normal' | 'intense';
@@ -21,6 +23,7 @@ export interface SurvivalHudMeta {
 }
 
 export interface SurvivalHudActions {
+  onScienceAction: () => void;
   onRepair: () => void;
   onStartMission: () => void;
   onPause: () => void;
@@ -34,6 +37,39 @@ export interface SurvivalHudActions {
 }
 
 const units = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 0 });
+
+function ScienceObjective({ science, onAction, paused }: {
+  science: ScienceMissionStatus;
+  onAction: () => void;
+  paused: boolean;
+}) {
+  const labels = {
+    sample: ['1/3 · Amostra M01', `Reservar amostra · ${SAMPLE_ORE_COST} UJ`],
+    'monitoring-ready': ['2/3 · Monitoramento sísmico', 'Iniciar registro'],
+    monitoring: ['2/3 · Monitoramento sísmico', ''],
+    transmission: ['3/3 · Envio do relatório', 'Transmitir dados'],
+    complete: ['Dados transmitidos', ''],
+  } as const;
+  const [title, action] = labels[science.phase];
+
+  return h(
+    'section',
+    { 'aria-label': 'Missão científica', style: { marginBottom: '10px', paddingBottom: '8px', borderBottom: '1px solid #4d2f20' } },
+    h('h3', { style: { margin: '0 0 3px', fontSize: '12px', color: '#ffb078' } }, title),
+    science.phase === 'monitoring'
+      ? h('p', { style: { margin: '0 0 3px', fontSize: '12px' } }, `${science.secondsRecorded} / ${MONITORING_SECONDS} s registrados`)
+      : null,
+    science.blockedReason
+      ? h('p', { style: { margin: '0 0 4px', fontSize: '11.5px', color: '#d3bbb0' } }, science.blockedReason)
+      : null,
+    action ? h('button', {
+      type: 'button',
+      disabled: paused || science.blockedReason !== null,
+      onClick: onAction,
+      style: { ...btnStyle(false), padding: '3px 7px', fontSize: '11px', opacity: science.blockedReason ? 0.65 : 1 },
+    }, action) : null,
+  );
+}
 const rates = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 });
 const weatherLabels = {
   clear: 'Tempo limpo',
@@ -123,6 +159,7 @@ function SurvivalHud({
     stageGoal,
     sol,
     activeEvent,
+    science,
     status = 'playing',
     endReason,
   } = state;
@@ -269,6 +306,7 @@ function SurvivalHud({
               stageGoal,
             ),
           ),
+          science ? h(ScienceObjective, { science, onAction: actions.onScienceAction, paused: isPaused }) : null,
           h(
             'dl',
             { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', margin: 0 } },
@@ -431,7 +469,7 @@ function SurvivalHud({
             h(
               'p',
               { style: { margin: '0 0 16px', fontSize: '13px', color: '#fff3e6' } },
-              'Conclua as cinco etapas e mantenha o Posto Aurora de pé até o revezamento.',
+              'Conclua as cinco etapas, transmita os dados científicos e mantenha o posto de pé até o revezamento.',
             ),
             h(
               'a',
@@ -768,6 +806,7 @@ function SurvivalHud({
               h('li', null, `Ciclo alcançado: Sol ${sol?.solIndex ?? 1} / ${sol?.targetSols ?? 10}`),
               h('li', null, `Minério final: ${units.format(ore)} / ${oreCapacity} UJ`),
               h('li', null, `Impactos registrados: ${impactCount}`),
+              h('li', null, science?.phase === 'complete' ? 'Relatório científico transmitido' : 'Relatório científico pendente'),
             ),
             h(
               'div',
@@ -841,6 +880,9 @@ export function mountSurvivalHud(
       last.stage === state.stage &&
       last.stageTitle === state.stageTitle &&
       last.stageGoal === state.stageGoal &&
+      last.science?.phase === state.science?.phase &&
+      last.science?.secondsRecorded === state.science?.secondsRecorded &&
+      last.science?.blockedReason === state.science?.blockedReason &&
       last.activeEvent?.type === state.activeEvent?.type &&
       last.activeEvent?.phase === state.activeEvent?.phase &&
       lastRemaining === activeRemaining &&
