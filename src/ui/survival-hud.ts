@@ -1,15 +1,20 @@
 import { h, render } from 'preact';
+import { useMemo } from 'preact/hooks';
+import type { JSX } from 'preact';
 import type { BaseSurvivalState } from '../systems/survival/BaseSurvivalSystem.ts';
 import { LOADOUT_CONFIGS } from '../systems/survival/loadouts.ts';
 import type { SolarPhase } from '../types/index.ts';
 import { COLONY_BALANCE } from '../systems/survival/economy.ts';
 import { MONITORING_SECONDS, SAMPLE_ORE_COST } from '../systems/survival/science-mission.ts';
 import type { ScienceMissionStatus } from '../systems/survival/science-mission.ts';
+import { isLocale, LANGUAGE_OPTIONS, translatorFor } from './i18n.ts';
+import type { Locale, Translator } from './i18n.ts';
 
 export type LoadoutId = 'standard' | 'hull' | 'battery';
 export type DifficultyId = 'calm' | 'normal' | 'intense';
 
 export interface GameSettings {
+  locale: Locale;
   cameraSpeed: 'slow' | 'normal' | 'fast';
   resolutionScale: 'performance' | 'native';
   solDurationSec: 36 | 48 | 72;
@@ -38,8 +43,6 @@ export interface SurvivalHudActions {
   onSelectDifficulty: (difficulty: DifficultyId) => void;
 }
 
-const units = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 0 });
-
 const hudStackStyle = {
   position: 'fixed',
   top: '16px',
@@ -62,29 +65,32 @@ const hudPanelStyle = {
   boxShadow: '0 8px 24px rgba(0, 0, 0, 0.35)',
 };
 
-function ScienceObjective({ science, onAction, paused }: {
+function ScienceObjective({ science, onAction, paused, t }: {
   science: ScienceMissionStatus;
   onAction: () => void;
   paused: boolean;
+  t: Translator;
 }) {
   const labels = {
-    sample: ['1/3 · Amostra M01', `Reservar amostra · ${SAMPLE_ORE_COST} UJ`],
-    'monitoring-ready': ['2/3 · Monitoramento sísmico', 'Iniciar registro'],
-    monitoring: ['2/3 · Monitoramento sísmico', ''],
-    transmission: ['3/3 · Envio do relatório', 'Transmitir dados'],
-    complete: ['Dados transmitidos', ''],
+    sample: [t('1/3 · Amostra M01'), t('Reservar amostra · {0} UJ', SAMPLE_ORE_COST)],
+    'monitoring-ready': [t('2/3 · Monitoramento sísmico'), t('Iniciar registro')],
+    monitoring: [t('2/3 · Monitoramento sísmico'), ''],
+    transmission: [t('3/3 · Envio do relatório'), t('Transmitir dados')],
+    complete: [t('Dados transmitidos'), ''],
   } as const;
   const [title, action] = labels[science.phase];
 
   return h(
     'section',
-    { 'aria-label': 'Missão científica', style: { marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #4d2f20' } },
+    { 'aria-label': t('Missão científica'), style: { marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #4d2f20' } },
     h('h3', { style: { margin: '0 0 3px', fontSize: '12px', color: '#ffb078' } }, title),
     science.phase === 'monitoring'
-      ? h('p', { style: { margin: '0 0 3px', fontSize: '12px' } }, `${science.secondsRecorded} / ${MONITORING_SECONDS} s registrados`)
+      ? h('p', { style: { margin: '0 0 3px', fontSize: '12px' } }, t('{0} / {1} s registrados', science.secondsRecorded, MONITORING_SECONDS))
       : null,
     science.blockedReason
-      ? h('p', { style: { margin: '0 0 4px', fontSize: '11.5px', color: '#d3bbb0' } }, science.blockedReason)
+      ? h('p', { style: { margin: '0 0 4px', fontSize: '11.5px', color: '#d3bbb0' } }, science.blockedReason === `Reserve ${SAMPLE_ORE_COST} UJ de minério.`
+          ? t('Reserve {0} UJ de minério.', SAMPLE_ORE_COST)
+          : t(science.blockedReason))
       : null,
     action ? h('button', {
       type: 'button',
@@ -94,7 +100,6 @@ function ScienceObjective({ science, onAction, paused }: {
     }, action) : null,
   );
 }
-const rates = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 });
 const weatherLabels = {
   clear: 'Tempo limpo',
   'dust-storm': 'Tempestade de poeira',
@@ -164,6 +169,12 @@ function SurvivalHud({
   meta: SurvivalHudMeta;
   actions: SurvivalHudActions;
 }) {
+  const locale = meta.settings.locale;
+  const t = useMemo(() => translatorFor(locale), [locale]);
+  const { units, rates } = useMemo(() => ({
+    units: new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }),
+    rates: new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }),
+  }), [locale]);
   const {
     ore,
     oreCapacity,
@@ -194,15 +205,15 @@ function SurvivalHud({
   const showEndModal = status === 'victory' || status === 'defeat';
 
   const loadouts: ReadonlyArray<{ id: LoadoutId; label: string; desc: string }> = [
-    { id: 'standard', label: 'Padrão', desc: `${LOADOUT_CONFIGS.standard.startingOre} UJ de minério` },
-    { id: 'hull', label: 'Casco Reforçado', desc: `${LOADOUT_CONFIGS.hull.startingOre} UJ · −25% de dano` },
-    { id: 'battery', label: 'Reserva Elétrica', desc: `${LOADOUT_CONFIGS.battery.startingOre} UJ · +${LOADOUT_CONFIGS.battery.initialBattery} de bateria` },
+    { id: 'standard', label: t('Padrão'), desc: t('{0} UJ de minério', LOADOUT_CONFIGS.standard.startingOre) },
+    { id: 'hull', label: t('Casco Reforçado'), desc: t('{0} UJ · −25% de dano', LOADOUT_CONFIGS.hull.startingOre) },
+    { id: 'battery', label: t('Reserva Elétrica'), desc: t('{0} UJ · +{1} de bateria', LOADOUT_CONFIGS.battery.startingOre, LOADOUT_CONFIGS.battery.initialBattery) },
   ];
 
   const difficulties: ReadonlyArray<{ id: DifficultyId; label: string; desc: string }> = [
-    { id: 'calm', label: 'Calmo', desc: 'Eventos raros' },
-    { id: 'normal', label: 'Normal', desc: 'Padrão' },
-    { id: 'intense', label: 'Intenso', desc: 'Eventos frequentes' },
+    { id: 'calm', label: t('Calmo'), desc: t('Eventos raros') },
+    { id: 'normal', label: t('Normal'), desc: t('Padrão') },
+    { id: 'intense', label: t('Intenso'), desc: t('Eventos frequentes') },
   ];
 
   return h(
@@ -238,9 +249,9 @@ function SurvivalHud({
                       color: phaseColors[sol.phase],
                     },
                   },
-                  `Sol ${sol.solIndex}/${sol.targetSols} · ${phaseLabels[sol.phase]}`,
+                  t('Sol {0}/{1} · {2}', sol.solIndex, sol.targetSols, t(phaseLabels[sol.phase])),
                 )
-              : h('h2', { id: 'survival-hud-title', style: { margin: 0, fontSize: '14px' } }, 'Estado da base'),
+              : h('h2', { id: 'survival-hud-title', style: { margin: 0, fontSize: '14px' } }, t('Estado da base')),
             status === 'playing'
               ? h(
                   'div',
@@ -260,7 +271,7 @@ function SurvivalHud({
                         cursor: 'pointer',
                       },
                     },
-                    'Config',
+                    t('Config'),
                   ),
                   h(
                     'button',
@@ -277,14 +288,14 @@ function SurvivalHud({
                         cursor: 'pointer',
                       },
                     },
-                    'Pausar',
+                    t('Pausar'),
                   ),
                 )
               : null,
           ),
           sol
             ? h('progress', {
-                'aria-label': 'Progresso do ciclo solar',
+                'aria-label': t('Progresso do ciclo solar'),
                 max: 100,
                 value: Math.round(sol.solProgress * 100),
                 style: {
@@ -297,7 +308,7 @@ function SurvivalHud({
               })
             : null,
           waitingForConstruction
-            ? h('p', { style: { margin: '0 0 8px', fontSize: '12px', color: '#ffb078' } }, 'Instale a primeira construção para iniciar o Sol 1.')
+            ? h('p', { style: { margin: '0 0 8px', fontSize: '12px', color: '#ffb078' } }, t('Instale a primeira construção para iniciar o Sol 1.'))
             : null,
           h(
             'dl',
@@ -305,7 +316,7 @@ function SurvivalHud({
             h(
               'div',
               null,
-              h('dt', { style: labelStyle }, hudIcon(oreIcon), 'Minério'),
+              h('dt', { style: labelStyle }, hudIcon(oreIcon), t('Minério')),
               h(
                 'dd',
                 { style: { margin: '2px 0 0', fontWeight: '600', fontVariantNumeric: 'tabular-nums' } },
@@ -315,7 +326,7 @@ function SurvivalHud({
             h(
               'div',
               null,
-              h('dt', { style: labelStyle }, hudIcon(integrityIcon), 'Integridade'),
+              h('dt', { style: labelStyle }, hudIcon(integrityIcon), t('Integridade')),
               h(
                 'dd',
                 { style: { margin: '2px 0 0', fontWeight: '600', fontVariantNumeric: 'tabular-nums' } },
@@ -324,7 +335,7 @@ function SurvivalHud({
             ),
           ),
           h('progress', {
-            'aria-label': 'Integridade da base',
+            'aria-label': t('Integridade da base'),
             max: 100,
             value: integrity,
             style: {
@@ -343,32 +354,32 @@ function SurvivalHud({
             h(
               'div',
               null,
-              h('dt', { style: labelStyle }, 'Geração / demanda'),
+              h('dt', { style: labelStyle }, t('Geração / demanda')),
               h('dd', { style: { margin: 0 } }, `${rates.format(generation)} / ${rates.format(demand)} UJ/s`),
             ),
             h(
               'div',
               null,
-              h('dt', { style: labelStyle }, 'Bateria'),
+              h('dt', { style: labelStyle }, t('Bateria')),
               h('dd', { style: { margin: 0 } }, `${rates.format(battery)} / ${batteryCapacity} UJ`),
             ),
             h(
               'div',
               null,
-              h('dt', { style: labelStyle }, 'Mineração'),
+              h('dt', { style: labelStyle }, t('Mineração')),
               h('dd', { style: { margin: 0 } }, `${rates.format(miningRate)} UJ/s`),
             ),
             h(
               'div',
               null,
-              h('dt', { style: labelStyle }, 'Suporte de vida'),
-              h('dd', { style: { margin: 0 } }, `${miners} / ${supportCapacity} usinas`),
+              h('dt', { style: labelStyle }, t('Suporte de vida')),
+              h('dd', { style: { margin: 0 } }, t('{0} / {1} usinas', miners, supportCapacity)),
             ),
           ),
           h(
             'p',
             { style: { margin: '8px 0 0', color: weather === 'clear' ? '#d3bbb0' : '#ffb678', fontSize: '12px' } },
-            weatherLabels[weather],
+            t(weatherLabels[weather]),
           ),
           status === 'playing' && integrity > 0 && integrity < 100
             ? h(
@@ -388,7 +399,7 @@ function SurvivalHud({
                     cursor: ore < COLONY_BALANCE.repairOrePerPoint ? 'not-allowed' : 'pointer',
                   },
                 },
-                `Reparar · ${COLONY_BALANCE.repairOrePerPoint} UJ por ponto`,
+                t('Reparar · {0} UJ por ponto', COLONY_BALANCE.repairOrePerPoint),
               )
             : null,
           h(
@@ -399,7 +410,7 @@ function SurvivalHud({
                   'p',
                   { key: impactCount, style: { ...iconRow, margin: '8px 0 0', color: '#ffb1a6', fontWeight: '600' } },
                   hudIcon(impactIcon),
-                  integrity === 0 ? 'Base destruída' : 'Base atingida',
+                  integrity === 0 ? t('Base destruída') : t('Base atingida'),
                 )
               : activeEvent
                 ? h(
@@ -414,20 +425,20 @@ function SurvivalHud({
                       },
                     },
                     hudIcon(impactIcon),
-                    `${activeEvent.phase === 'warning' ? 'Alerta' : 'Perigo'}: ${activeEvent.label} (${Math.ceil(activeEvent.remainingSec)}s)`,
+                    t(activeEvent.phase === 'warning' ? 'Alerta: {0} ({1}s)' : 'Perigo: {0} ({1}s)', t(activeEvent.label), Math.ceil(activeEvent.remainingSec)),
                   )
                 : null,
           ),
         ), h(
           'section',
-          { 'aria-label': 'Objetivos da operação', style: hudPanelStyle },
+          { 'aria-label': t('Objetivos da operação'), style: hudPanelStyle },
           h(
             'h2',
             { style: { margin: '0 0 2px', fontSize: '12px', fontWeight: '600', color: '#ffb078' } },
-            `Etapa ${stage}/5 · ${stageTitle}`,
+            t('Etapa {0}/5 · {1}', stage, t(stageTitle)),
           ),
-          h('p', { style: { margin: 0, fontSize: '11.5px', color: '#d3bbb0' } }, stageGoal),
-          science ? h(ScienceObjective, { science, onAction: actions.onScienceAction, paused: isPaused }) : null,
+          h('p', { style: { margin: 0, fontSize: '11.5px', color: '#d3bbb0' } }, t(stageGoal)),
+          science ? h(ScienceObjective, { science, onAction: actions.onScienceAction, paused: isPaused, t }) : null,
         ))
       : null,
 
@@ -462,16 +473,16 @@ function SurvivalHud({
                 boxShadow: '0 16px 40px rgba(0, 0, 0, 0.55)',
               },
             },
-            h('h1', { style: { margin: '0 0 4px', fontSize: '20px', color: '#fff3e6' } }, 'Missão Marte · Posto Aurora'),
+            h('h1', { style: { margin: '0 0 4px', fontSize: '20px', color: '#fff3e6' } }, t('Missão Marte · Posto Aurora')),
             h(
               'p',
               { style: { margin: '0 0 8px', fontSize: '13px', color: '#d3bbb0' } },
-              'Uma chuva de meteoros interrompeu a pesquisa de tremores marcianos em um setor inspirado em Cerberus Fossae. A próxima equipe chega em 10 sóis pra retomar a investigação.',
+              t('Uma chuva de meteoros interrompeu a pesquisa de tremores marcianos em um setor inspirado em Cerberus Fossae. A próxima equipe chega em 10 sóis pra retomar a investigação.'),
             ),
             h(
               'p',
               { style: { margin: '0 0 16px', fontSize: '13px', color: '#fff3e6' } },
-              'Conclua as cinco etapas, transmita os dados científicos e mantenha o posto de pé até o revezamento.',
+              t('Conclua as cinco etapas, transmita os dados científicos e mantenha o posto de pé até o revezamento.'),
             ),
             h(
               'a',
@@ -481,9 +492,9 @@ function SurvivalHud({
                 rel: 'noreferrer',
                 style: { display: 'inline-block', margin: '0 0 14px', color: '#ffb078', fontSize: '12px' },
               },
-              'Inspiração científica · InSight da NASA',
+              t('Inspiração científica · InSight da NASA'),
             ),
-            h('div', { style: { fontSize: '12px', fontWeight: '600', marginBottom: '6px' } }, 'Perfil inicial'),
+            h('div', { style: { fontSize: '12px', fontWeight: '600', marginBottom: '6px' } }, t('Perfil inicial')),
             h(
               'div',
               { style: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px', marginBottom: '14px' } },
@@ -502,7 +513,7 @@ function SurvivalHud({
                 ),
               ),
             ),
-            h('div', { style: { fontSize: '12px', fontWeight: '600', marginBottom: '6px' } }, 'Dificuldade'),
+            h('div', { style: { fontSize: '12px', fontWeight: '600', marginBottom: '6px' } }, t('Dificuldade')),
             h(
               'div',
               { style: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px', marginBottom: '18px' } },
@@ -531,7 +542,7 @@ function SurvivalHud({
                   onClick: actions.onStartMission,
                   style: { ...primaryBtnStyle, flex: 1 },
                 },
-                'Iniciar Operação',
+                t('Iniciar Operação'),
               ),
               h(
                 'button',
@@ -540,7 +551,7 @@ function SurvivalHud({
                   onClick: () => actions.onToggleSettings(true),
                   style: btnStyle(false),
                 },
-                'Configurações',
+                t('Configurações'),
               ),
             ),
           ),
@@ -578,7 +589,7 @@ function SurvivalHud({
                 boxShadow: '0 16px 40px rgba(0, 0, 0, 0.55)',
               },
             },
-            h('h2', { style: { margin: '0 0 4px', fontSize: '18px' } }, 'Operação Pausada'),
+            h('h2', { style: { margin: '0 0 4px', fontSize: '18px' } }, t('Operação Pausada')),
             h(
               'p',
               { style: { margin: '0 0 14px', fontSize: '12.5px', color: '#d3bbb0' } },
@@ -590,7 +601,7 @@ function SurvivalHud({
               h(
                 'button',
                 { type: 'button', onClick: actions.onResume, style: { ...primaryBtnStyle, width: '100%' } },
-                'Continuar (ESC)',
+                t('Continuar (ESC)'),
               ),
               h(
                 'button',
@@ -599,17 +610,17 @@ function SurvivalHud({
                   onClick: () => actions.onToggleSettings(true),
                   style: { ...btnStyle(false), width: '100%' },
                 },
-                'Configurações',
+                t('Configurações'),
               ),
               h(
                 'button',
                 { type: 'button', onClick: actions.onRestart, style: { ...btnStyle(false), width: '100%' } },
-                'Reiniciar Missão',
+                t('Reiniciar Missão'),
               ),
               h(
                 'button',
                 { type: 'button', onClick: actions.onMainMenu, style: { ...btnStyle(false), width: '100%' } },
-                'Menu Inicial',
+                t('Menu Inicial'),
               ),
             ),
           ),
@@ -650,16 +661,30 @@ function SurvivalHud({
                 boxShadow: '0 16px 40px rgba(0, 0, 0, 0.55)',
               },
             },
-            h('h2', { style: { margin: '0 0 14px', fontSize: '18px' } }, 'Configurações'),
-            h('div', { style: { fontSize: '12px', fontWeight: '600', marginBottom: '6px' } }, 'Velocidade da câmera'),
+            h('h2', { style: { margin: '0 0 14px', fontSize: '18px' } }, t('Configurações')),
+            h(
+              'div',
+              { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '12px' } },
+              h('label', { htmlFor: 'game-language', style: { fontSize: '12px', fontWeight: '600' } }, t('Idioma')),
+              h('select', {
+                id: 'game-language',
+                value: locale,
+                onChange: (event: JSX.TargetedEvent<HTMLSelectElement>) => {
+                  const value = event.currentTarget.value;
+                  if (isLocale(value)) actions.onUpdateSettings({ ...meta.settings, locale: value });
+                },
+                style: btnStyle(false),
+              }, Object.entries(LANGUAGE_OPTIONS).map(([value, label]) => h('option', { key: value, value, lang: value }, label))),
+            ),
+            h('div', { style: { fontSize: '12px', fontWeight: '600', marginBottom: '6px' } }, t('Velocidade da câmera')),
             h(
               'div',
               { style: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px', marginBottom: '12px' } },
               (
                 [
-                  { id: 'slow', label: 'Lenta' },
-                  { id: 'normal', label: 'Normal' },
-                  { id: 'fast', label: 'Rápida' },
+                  { id: 'slow', label: t('Lenta') },
+                  { id: 'normal', label: t('Normal') },
+                  { id: 'fast', label: t('Rápida') },
                 ] as const
               ).map((opt) =>
                 h(
@@ -675,14 +700,14 @@ function SurvivalHud({
                 ),
               ),
             ),
-            h('div', { style: { fontSize: '12px', fontWeight: '600', marginBottom: '6px' } }, 'Resolução gráfica'),
+            h('div', { style: { fontSize: '12px', fontWeight: '600', marginBottom: '6px' } }, t('Resolução gráfica')),
             h(
               'div',
               { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginBottom: '12px' } },
               (
                 [
-                  { id: 'performance', label: 'Desempenho (1x)' },
-                  { id: 'native', label: 'Alta (Nativa)' },
+                  { id: 'performance', label: t('Desempenho (1x)') },
+                  { id: 'native', label: t('Alta (Nativa)') },
                 ] as const
               ).map((opt) =>
                 h(
@@ -698,7 +723,7 @@ function SurvivalHud({
                 ),
               ),
             ),
-            h('div', { style: { fontSize: '12px', fontWeight: '600', marginBottom: '6px' } }, 'Duração do Sol'),
+            h('div', { style: { fontSize: '12px', fontWeight: '600', marginBottom: '6px' } }, t('Duração do Sol')),
             h(
               'div',
               { style: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px', marginBottom: '14px' } },
@@ -719,14 +744,14 @@ function SurvivalHud({
             h(
               'div',
               { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '6px' } },
-              h('label', { htmlFor: 'disaster-volume', style: { fontSize: '12px', fontWeight: '600' } }, 'Volume dos desastres'),
+              h('label', { htmlFor: 'disaster-volume', style: { fontSize: '12px', fontWeight: '600' } }, t('Volume dos desastres')),
               h('button', {
                 type: 'button',
-                'aria-label': 'Silenciar desastres',
+                'aria-label': t('Silenciar desastres'),
                 'aria-pressed': !meta.settings.disasterSound,
                 onClick: () => actions.onUpdateSettings({ ...meta.settings, disasterSound: !meta.settings.disasterSound }),
                 style: btnStyle(!meta.settings.disasterSound),
-              }, meta.settings.disasterSound ? 'Silenciar' : 'Reativar som'),
+              }, meta.settings.disasterSound ? t('Silenciar') : t('Reativar som')),
             ),
             h(
               'div',
@@ -746,7 +771,7 @@ function SurvivalHud({
                 style: { minWidth: '4ch', textAlign: 'right', fontSize: '12px', fontVariantNumeric: 'tabular-nums' },
               }, `${meta.settings.disasterVolume}%`),
             ),
-            h('div', { style: { fontSize: '12px', fontWeight: '600', marginBottom: '6px' } }, 'Controles'),
+            h('div', { style: { fontSize: '12px', fontWeight: '600', marginBottom: '6px' } }, t('Controles')),
             h(
               'dl',
               {
@@ -762,14 +787,14 @@ function SurvivalHud({
                   fontSize: '12px',
                 },
               },
-              h('dt', { style: { color: '#ffb078', fontWeight: '600' } }, 'WASD / Setas'),
-              h('dd', { style: { margin: 0, color: '#d3bbb0' } }, 'Mover câmera'),
-              h('dt', { style: { color: '#ffb078', fontWeight: '600' } }, 'Q / E / Botão Direito'),
-              h('dd', { style: { margin: 0, color: '#d3bbb0' } }, 'Girar câmera'),
+              h('dt', { style: { color: '#ffb078', fontWeight: '600' } }, t('WASD / Setas')),
+              h('dd', { style: { margin: 0, color: '#d3bbb0' } }, t('Mover câmera')),
+              h('dt', { style: { color: '#ffb078', fontWeight: '600' } }, t('Q / E / Botão Direito')),
+              h('dd', { style: { margin: 0, color: '#d3bbb0' } }, t('Girar câmera')),
               h('dt', { style: { color: '#ffb078', fontWeight: '600' } }, 'F'),
-              h('dd', { style: { margin: 0, color: '#d3bbb0' } }, 'Girar construção'),
+              h('dd', { style: { margin: 0, color: '#d3bbb0' } }, t('Girar construção')),
               h('dt', { style: { color: '#ffb078', fontWeight: '600' } }, 'ESC / P'),
-              h('dd', { style: { margin: 0, color: '#d3bbb0' } }, 'Pausar ou cancelar'),
+              h('dd', { style: { margin: 0, color: '#d3bbb0' } }, t('Pausar ou cancelar')),
             ),
             h(
               'button',
@@ -778,7 +803,7 @@ function SurvivalHud({
                 onClick: () => actions.onToggleSettings(false),
                 style: { ...primaryBtnStyle, width: '100%' },
               },
-              'Fechar',
+              t('Fechar'),
             ),
           ),
         )
@@ -824,24 +849,24 @@ function SurvivalHud({
                   color: status === 'victory' ? '#7cdec0' : '#ff8585',
                 },
               },
-              status === 'victory' ? 'Posto Aurora entregue' : 'Missão encerrada',
+              status === 'victory' ? t('Posto Aurora entregue') : t('Missão encerrada'),
             ),
             h(
               'p',
               { style: { margin: '0 0 14px', color: '#d3bbb0' } },
-              endReason ??
+              (endReason ? t(endReason) : undefined) ??
                 (status === 'victory'
-                  ? 'A colônia resistiu e evoluiu nos 10 ciclos solares em Marte.'
-                  : 'A integridade estrutural da base chegou a 0%.'),
+                  ? t('A colônia resistiu e evoluiu nos 10 ciclos solares em Marte.')
+                  : t('A integridade estrutural da base chegou a 0%.')),
             ),
             h(
               'ul',
               { style: { margin: '0 0 16px', paddingLeft: '18px', color: '#f5ece6' } },
-              h('li', null, `Etapa alcançada: ${stage} / 5 (${stageTitle})`),
-              h('li', null, `Ciclo alcançado: Sol ${sol?.solIndex ?? 1} / ${sol?.targetSols ?? 10}`),
-              h('li', null, `Minério final: ${units.format(ore)} / ${oreCapacity} UJ`),
-              h('li', null, `Impactos registrados: ${impactCount}`),
-              h('li', null, science?.phase === 'complete' ? 'Relatório científico transmitido' : 'Relatório científico pendente'),
+              h('li', null, t('Etapa alcançada: {0} / 5 ({1})', stage, t(stageTitle))),
+              h('li', null, t('Ciclo alcançado: Sol {0} / {1}', sol?.solIndex ?? 1, sol?.targetSols ?? 10)),
+              h('li', null, t('Minério final: {0} / {1} UJ', units.format(ore), oreCapacity)),
+              h('li', null, t('Impactos registrados: {0}', impactCount)),
+              h('li', null, science?.phase === 'complete' ? t('Relatório científico transmitido') : t('Relatório científico pendente')),
             ),
             h(
               'div',
@@ -853,7 +878,7 @@ function SurvivalHud({
                   onClick: actions.onRestart,
                   style: { ...primaryBtnStyle, flex: 1 },
                 },
-                'Jogar Novamente',
+                t('Jogar Novamente'),
               ),
               h(
                 'button',
@@ -862,7 +887,7 @@ function SurvivalHud({
                   onClick: actions.onMainMenu,
                   style: btnStyle(false),
                 },
-                'Menu Inicial',
+                t('Menu Inicial'),
               ),
             ),
           ),
@@ -893,6 +918,7 @@ export function mountSurvivalHud(
       lastMeta?.loadout === meta.loadout &&
       lastMeta?.difficulty === meta.difficulty &&
       lastMeta?.settingsOpen === meta.settingsOpen &&
+      lastMeta?.settings.locale === meta.settings.locale &&
       lastMeta?.settings.cameraSpeed === meta.settings.cameraSpeed &&
       lastMeta?.settings.resolutionScale === meta.settings.resolutionScale &&
       lastMeta?.settings.solDurationSec === meta.settings.solDurationSec &&

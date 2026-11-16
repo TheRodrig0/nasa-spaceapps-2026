@@ -7,11 +7,19 @@ import {
   getConstructionCost,
 } from '../systems/index.ts';
 import type { BuildingCategory } from '../types/index.ts';
+import { translatorFor } from './i18n.ts';
+import type { Locale, Translator } from './i18n.ts';
 
 const panelFrame = new URL('./assets/kenney/panel.png', import.meta.url).href;
 const activeButtonFrame = new URL('./assets/kenney/active-button.png', import.meta.url).href;
 
-function BuildMenuApp({ buildSystem }: { buildSystem: BuildSystem }) {
+function translateBuildReason(reason: string, t: Translator): string {
+  const unlockStage = /^Desbloqueia na Etapa (\d+)$/.exec(reason);
+  return unlockStage ? t('Desbloqueia na Etapa {0}', unlockStage[1]) : t(reason);
+}
+
+function BuildMenuApp({ buildSystem, locale }: { buildSystem: BuildSystem; locale: Locale }) {
+  const t = translatorFor(locale);
   const [activeCategory, setActiveCategory] = useState<BuildingCategory>('casas');
   const [, setTick] = useState(0);
 
@@ -64,11 +72,11 @@ function BuildMenuApp({ buildSystem }: { buildSystem: BuildSystem }) {
               backdropFilter: 'blur(8px)',
             },
           },
-          h('span', null, `Construindo: ${selected.name} (${rotation}°)`),
+          h('span', null, t('Construindo: {0} ({1}°)', t(selected.name), rotation)),
           h(
             'span',
             { style: { color: selectedBlockReason ? '#e08a8a' : '#b7a49a' } },
-            selectedBlockReason ?? 'Clique para posicionar',
+            selectedBlockReason ? translateBuildReason(selectedBlockReason, t) : t('Clique para posicionar'),
           ),
           h(
             'button',
@@ -85,7 +93,7 @@ function BuildMenuApp({ buildSystem }: { buildSystem: BuildSystem }) {
                 fontSize: '12px',
               },
             },
-            'Girar (F)',
+            t('Girar (F)'),
           ),
           h(
             'button',
@@ -102,7 +110,7 @@ function BuildMenuApp({ buildSystem }: { buildSystem: BuildSystem }) {
                 fontSize: '12px',
               },
             },
-            'Cancelar (Esc)',
+            t('Cancelar (Esc)'),
           ),
         )
       : null,
@@ -158,7 +166,7 @@ function BuildMenuApp({ buildSystem }: { buildSystem: BuildSystem }) {
                   cursor: 'pointer',
                 },
               },
-              cat.label,
+              t(cat.label),
             );
           }),
         ),
@@ -173,7 +181,7 @@ function BuildMenuApp({ buildSystem }: { buildSystem: BuildSystem }) {
               alignItems: 'center',
             },
           },
-          h('span', null, `Construídas: ${placedCount}`),
+          h('span', null, t('Construídas: {0}', placedCount)),
         ),
       ),
 
@@ -226,7 +234,7 @@ function BuildMenuApp({ buildSystem }: { buildSystem: BuildSystem }) {
               h(
                 'span',
                 { style: { fontWeight: '600', fontSize: '13px', color: isSelected ? '#ffb078' : '#f5ece6' } },
-                def.name,
+                t(def.name),
               ),
               h(
                 'span',
@@ -250,7 +258,7 @@ function BuildMenuApp({ buildSystem }: { buildSystem: BuildSystem }) {
                   lineHeight: '1.3',
                 },
               },
-              blockReason ?? def.description,
+              blockReason ? translateBuildReason(blockReason, t) : t(def.description),
             ),
           );
         }),
@@ -259,13 +267,14 @@ function BuildMenuApp({ buildSystem }: { buildSystem: BuildSystem }) {
   );
 }
 
-export function mountBuildMenu(buildSystem: BuildSystem): () => void {
+export function mountBuildMenu(buildSystem: BuildSystem) {
   const root = document.getElementById('ui-root');
-  if (!root) {
-    return () => {};
-  }
-  render(h(BuildMenuApp, { buildSystem }), root);
-  return () => {
-    render(null, root);
+  return {
+    setLocale(locale: Locale): void {
+      if (root) render(h(BuildMenuApp, { buildSystem, locale }), root);
+    },
+    dispose(): void {
+      if (root) render(null, root);
+    },
   };
 }

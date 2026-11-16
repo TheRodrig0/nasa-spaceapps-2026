@@ -11,6 +11,7 @@ import type { ColonyWeather } from '../systems/index.ts';
 import { TerrainCameraEvent, WorldBridgeEvent } from '../types/index.ts';
 import type { ActiveEventInfo, EventUpdateContext, GameState } from '../types/index.ts';
 import { mountBuildMenu, mountSurvivalHud } from '../ui/index.ts';
+import { isLocale, translatorFor } from '../ui/i18n.ts';
 import { LOADOUT_CONFIGS } from '../systems/survival/loadouts.ts';
 import { ScienceMission } from '../systems/survival/science-mission.ts';
 import { DEFAULT_DISASTER_VOLUME, DisasterAudio } from '../systems/events/disaster-audio.ts';
@@ -28,6 +29,7 @@ const INITIAL_PITCH = -42;
 const SETTINGS_STORAGE_KEY = 'mars-colony-settings-v1';
 
 const DEFAULT_SETTINGS: GameSettings = {
+  locale: 'en',
   cameraSpeed: 'normal',
   resolutionScale: 'native',
   solDurationSec: 48,
@@ -47,6 +49,7 @@ function loadSettings(): GameSettings {
     if (!raw) return { ...DEFAULT_SETTINGS };
     const parsed = JSON.parse(raw) as Partial<GameSettings>;
     return {
+      locale: isLocale(parsed.locale) ? parsed.locale : DEFAULT_SETTINGS.locale,
       cameraSpeed:
         parsed.cameraSpeed === 'slow' ||
         parsed.cameraSpeed === 'normal' ||
@@ -114,7 +117,7 @@ export async function bootstrapGame(): Promise<void> {
 
   const buildSystem = new BuildSystem(app, canvas, camera, terrainManager);
   app.root.addChild(buildSystem.entity);
-  const unmountBuildMenu = mountBuildMenu(buildSystem);
+  const buildMenu = mountBuildMenu(buildSystem);
 
   const solarCycle = new SolarCycleSystem(app, sunLight);
   const survivalSystem = new BaseSurvivalSystem();
@@ -185,6 +188,11 @@ export async function bootstrapGame(): Promise<void> {
   const applySettings = (next: GameSettings, previous?: GameSettings): void => {
     settings = next;
     saveSettings(next);
+    if (next.locale !== previous?.locale) {
+      document.documentElement.lang = next.locale;
+      document.title = translatorFor(next.locale)('Missão Marte');
+      buildMenu.setLocale(next.locale);
+    }
     disasterAudio.setEnabled(next.disasterSound);
     disasterAudio.setVolume(next.disasterVolume);
     if (next.cameraSpeed !== previous?.cameraSpeed) {
@@ -516,7 +524,7 @@ export async function bootstrapGame(): Promise<void> {
     window.removeEventListener('keydown', onGlobalKeyDown, true);
     window.removeEventListener('beforeunload', onBeforeUnload);
     survivalHud.dispose();
-    unmountBuildMenu();
+    buildMenu.dispose();
     buildSystem.dispose();
     isometricCamera.dispose();
     eventManager.destroy();

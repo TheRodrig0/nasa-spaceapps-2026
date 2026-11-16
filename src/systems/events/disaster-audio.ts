@@ -8,7 +8,7 @@ const SAMPLE_RATE = 22050;
 const TAU = Math.PI * 2;
 const MAX_GAIN = 0.5;
 const THUNDER_URL = new URL('./assets/thunder.mp3', import.meta.url);
-export const DEFAULT_DISASTER_VOLUME = 40;
+export const DEFAULT_DISASTER_VOLUME = 35;
 const durations: Record<Sound, number> = {
   warning: 0.48,
   meteor: 0.9,
