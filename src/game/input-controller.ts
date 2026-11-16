@@ -69,9 +69,12 @@ export class IsometricCameraController {
   private lastMouseX = 0;
   private lastMouseY = 0;
   private resetRequested = false;
+  private panSpeedMultiplier = 1;
+  private inputEnabled = true;
   private disposed = false;
 
   private readonly handleKeyDown = (event: KeyboardEvent): void => {
+    if (!this.inputEnabled) return;
     this.keysDown.add(event.code);
     if (!event.repeat) {
       if (event.code === 'Digit1') {
@@ -95,6 +98,7 @@ export class IsometricCameraController {
   };
 
   private readonly handleMouseDown = (event: MouseEvent): void => {
+    if (!this.inputEnabled) return;
     if (event.button === 1) {
       this.isMiddleDragging = true;
       this.lastMouseX = event.clientX;
@@ -117,7 +121,7 @@ export class IsometricCameraController {
   };
 
   private readonly handleMouseMove = (event: MouseEvent): void => {
-    if (!this.isMiddleDragging && !this.isRightDragging) {
+    if (!this.inputEnabled || (!this.isMiddleDragging && !this.isRightDragging)) {
       return;
     }
 
@@ -150,6 +154,7 @@ export class IsometricCameraController {
 
   private readonly handleWheel = (event: WheelEvent): void => {
     event.preventDefault();
+    if (!this.inputEnabled) return;
     const zoomRatio = event.deltaY > 0 ? 1.15 : 0.87;
     this.targetDistance = Math.max(
       this.minDistance,
@@ -272,6 +277,23 @@ export class IsometricCameraController {
     }
   }
 
+  public setPanSpeedMultiplier(mult: number): void {
+    if (!Number.isFinite(mult)) return;
+    this.panSpeedMultiplier = Math.max(0.25, Math.min(3, mult));
+  }
+
+  public setInputEnabled(enabled: boolean): void {
+    this.inputEnabled = enabled;
+    if (!enabled) {
+      this.clear();
+    }
+  }
+
+  public orbitIdle(deltaYawDeg: number): void {
+    this.targetYaw += deltaYawDeg;
+    this.currentYaw = this.targetYaw;
+  }
+
   private clampFocusTarget(): void {
     this.targetFocusX = Math.max(-this.worldLimit, Math.min(this.worldLimit, this.targetFocusX));
     this.targetFocusZ = Math.max(-this.worldLimit, Math.min(this.worldLimit, this.targetFocusZ));
@@ -286,27 +308,31 @@ export class IsometricCameraController {
     const sampler = heightSampler ?? this.defaultHeightSampler;
 
     // 1. Process keyboard orbit (Q / E)
-    if (this.keysDown.has('KeyQ')) {
-      this.targetYaw += this.keyRotateSpeed * dt;
-    }
-    if (this.keysDown.has('KeyE')) {
-      this.targetYaw -= this.keyRotateSpeed * dt;
+    if (this.inputEnabled) {
+      if (this.keysDown.has('KeyQ')) {
+        this.targetYaw += this.keyRotateSpeed * dt;
+      }
+      if (this.keysDown.has('KeyE')) {
+        this.targetYaw -= this.keyRotateSpeed * dt;
+      }
     }
 
     // 2. Process keyboard pan (WASD / Arrows)
     let forwardAxis = 0;
     let rightAxis = 0;
-    if (this.keysDown.has('KeyW') || this.keysDown.has('ArrowUp')) forwardAxis += 1;
-    if (this.keysDown.has('KeyS') || this.keysDown.has('ArrowDown')) forwardAxis -= 1;
-    if (this.keysDown.has('KeyD') || this.keysDown.has('ArrowRight')) rightAxis += 1;
-    if (this.keysDown.has('KeyA') || this.keysDown.has('ArrowLeft')) rightAxis -= 1;
+    if (this.inputEnabled) {
+      if (this.keysDown.has('KeyW') || this.keysDown.has('ArrowUp')) forwardAxis += 1;
+      if (this.keysDown.has('KeyS') || this.keysDown.has('ArrowDown')) forwardAxis -= 1;
+      if (this.keysDown.has('KeyD') || this.keysDown.has('ArrowRight')) rightAxis += 1;
+      if (this.keysDown.has('KeyA') || this.keysDown.has('ArrowLeft')) rightAxis -= 1;
 
-    // Optional keyboard zoom (PageUp / PageDown / Equal / Minus)
-    if (this.keysDown.has('PageUp') || this.keysDown.has('Equal') || this.keysDown.has('NumpadAdd')) {
-      this.targetDistance = Math.max(this.minDistance, this.targetDistance * (1 - 1.2 * dt));
-    }
-    if (this.keysDown.has('PageDown') || this.keysDown.has('Minus') || this.keysDown.has('NumpadSubtract')) {
-      this.targetDistance = Math.min(this.maxDistance, this.targetDistance * (1 + 1.2 * dt));
+      // Optional keyboard zoom (PageUp / PageDown / Equal / Minus)
+      if (this.keysDown.has('PageUp') || this.keysDown.has('Equal') || this.keysDown.has('NumpadAdd')) {
+        this.targetDistance = Math.max(this.minDistance, this.targetDistance * (1 - 1.2 * dt));
+      }
+      if (this.keysDown.has('PageDown') || this.keysDown.has('Minus') || this.keysDown.has('NumpadSubtract')) {
+        this.targetDistance = Math.min(this.maxDistance, this.targetDistance * (1 + 1.2 * dt));
+      }
     }
 
     if (forwardAxis !== 0 || rightAxis !== 0) {
@@ -325,7 +351,8 @@ export class IsometricCameraController {
       const isBoost = this.keysDown.has('ShiftLeft') || this.keysDown.has('ShiftRight');
       const boostMultiplier = isBoost ? TURBO_MULTIPLIER : 1;
       const zoomRatio = this.currentDistance / DEFAULT_DISTANCE;
-      const currentPanSpeed = this.basePanSpeed * zoomRatio * boostMultiplier;
+      const currentPanSpeed =
+        this.basePanSpeed * this.panSpeedMultiplier * zoomRatio * boostMultiplier;
       const step = currentPanSpeed * dt;
 
       this.targetFocusX += (gForwardX * normF + rightX * normR) * step;

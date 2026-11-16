@@ -36,7 +36,7 @@ function lerpColor(out: pc.Color, a: pc.Color, b: pc.Color, t: number): pc.Color
 }
 
 export class SolarCycleSystem {
-  public readonly solDurationSec: number;
+  public solDurationSec: number;
   public readonly targetSols: number;
 
   private readonly app: pc.AppBase;
@@ -64,6 +64,14 @@ export class SolarCycleSystem {
   public reset(): void {
     this.elapsedSec = 0;
     this.updateVisuals(0, undefined);
+  }
+
+  public setSolDurationSec(seconds: number): void {
+    if (!Number.isFinite(seconds) || seconds <= 5) return;
+    if (this.solDurationSec > 0 && this.elapsedSec > 0) {
+      this.elapsedSec = (this.elapsedSec / this.solDurationSec) * seconds;
+    }
+    this.solDurationSec = seconds;
   }
 
   public getElapsedTotalSec(): number {

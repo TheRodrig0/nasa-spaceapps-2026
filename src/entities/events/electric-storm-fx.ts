@@ -11,7 +11,7 @@ import type {
 const STORM_WARNING_DURATION = 5;
 const STORM_ACTIVE_DURATION = 15;
 const LIGHTNING_DAMAGE_BURST = 10;
-const LIGHTNING_DAMAGE_RADIUS = 28;
+const LIGHTNING_DAMAGE_RADIUS = 38;
 const LIGHTNING_DAMAGE_RADIUS_SQ = LIGHTNING_DAMAGE_RADIUS * LIGHTNING_DAMAGE_RADIUS;
 const ACTIVE_PRODUCTION_MULTIPLIER = 0.45;
 
@@ -442,6 +442,8 @@ export class ElectricStormFx implements WorldEventHandler {
   private strikeShakeRemaining = 0;
   private lastStrikeDistToFocus = 9999;
   private pendingBurstDamage = 0;
+  private readonly hitBuildingUids = new Set<string>();
+  private pendingBuildingsHit = 0;
 
   constructor(app: pc.AppBase, optionsOrSun?: pc.Entity | ElectricStormOptions) {
     this.app = app;
@@ -716,6 +718,8 @@ export class ElectricStormFx implements WorldEventHandler {
 
     this.nextSheetLightningTimer = 1.4 + Math.random() * 1.0;
     this.sheetLightningTimer = 0;
+    this.hitBuildingUids.clear();
+    this.pendingBuildingsHit = 0;
     this.hideBoltAndEffects();
   }
 
@@ -733,6 +737,8 @@ export class ElectricStormFx implements WorldEventHandler {
     this.nextStrikeTimer = 0.8;
     this.nextSheetLightningTimer = 1.1;
     this.pendingBurstDamage = 0;
+    this.hitBuildingUids.clear();
+    this.pendingBuildingsHit = 0;
     this.strikeShakeRemaining = 0;
   }
 
@@ -747,6 +753,7 @@ export class ElectricStormFx implements WorldEventHandler {
         damageThisFrame: 0,
         productionMultiplier: 1.0,
         shakeOffset: { x: 0, y: 0, z: 0 },
+        buildingsHitThisFrame: 0,
       };
     }
 
@@ -1004,16 +1011,22 @@ export class ElectricStormFx implements WorldEventHandler {
     // Consume Burst Damage (applied exactly once per bolt)
     const damageThisFrame = this.pendingBurstDamage;
     this.pendingBurstDamage = 0;
+    const buildingsHitThisFrame = this.pendingBuildingsHit;
+    this.pendingBuildingsHit = 0;
 
     return {
       damageThisFrame,
       productionMultiplier: phase === 'warning' ? 1.0 : ACTIVE_PRODUCTION_MULTIPLIER,
       shakeOffset,
+      buildingsHitThisFrame,
     };
   }
 
   public stop(): void {
     this.isRunning = false;
+    this.hitBuildingUids.clear();
+    this.pendingBuildingsHit = 0;
+    this.pendingBurstDamage = 0;
     this.rootEntity.enabled = false;
     this.hideBoltAndEffects();
 
@@ -1048,24 +1061,11 @@ export class ElectricStormFx implements WorldEventHandler {
   }
 
   private triggerLightningStrike(ctx: EventUpdateContext): void {
-    // 1. Determine target strike coordinates (prioritize colony buildings with slight spread)
-    let strikeX = ctx.focusTarget.x;
-    let strikeZ = ctx.focusTarget.z;
-
-    if (ctx.buildings.length > 0 && Math.random() < 0.65) {
-      const b = ctx.buildings[Math.floor(Math.random() * ctx.buildings.length)];
-      const bx = b.worldCenter?.x ?? (b.gridX + b.cols * 0.5) * 14;
-      const bz = b.worldCenter?.z ?? (b.gridZ + b.rows * 0.5) * 14;
-      const ang = Math.random() * Math.PI * 2;
-      const dist = 6 + Math.random() * 24;
-      strikeX = bx + Math.cos(ang) * dist;
-      strikeZ = bz + Math.sin(ang) * dist;
-    } else {
-      const ang = Math.random() * Math.PI * 2;
-      const dist = 30 + Math.random() * 150;
-      strikeX = ctx.focusTarget.x + Math.cos(ang) * dist;
-      strikeZ = ctx.focusTarget.z + Math.sin(ang) * dist;
-    }
+    // 1. Distribute lightning strikes randomly across the operational region
+    const ang = Math.random() * Math.PI * 2;
+    const dist = Math.sqrt(Math.random()) * 260;
+    let strikeX = ctx.focusTarget.x + Math.cos(ang) * dist;
+    let strikeZ = ctx.focusTarget.z + Math.sin(ang) * dist;
 
     const maxBound = Math.max(100, ctx.worldHalf * 0.85);
     strikeX = Math.max(-maxBound, Math.min(maxBound, strikeX));
@@ -1129,15 +1129,27 @@ export class ElectricStormFx implements WorldEventHandler {
     );
     this.strikeShakeRemaining = 0.38;
 
-    // 8. Gameplay Burst Damage (10 damage to buildings within 28 units, once per bolt)
+    // 8. Gameplay Burst Damage (10 damage to buildings within 38 units, once per bolt)
     let burstDamage = 0;
-    for (const b of ctx.buildings) {
-      const bx = b.worldCenter?.x ?? (b.gridX + b.cols * 0.5) * 14;
-      const bz = b.worldCenter?.z ?? (b.gridZ + b.rows * 0.5) * 14;
-      const dx = bx - strikeX;
-      const dz = bz - strikeZ;
-      if (dx * dx + dz * dz <= LIGHTNING_DAMAGE_RADIUS_SQ) {
+    if (ctx.buildings.length === 0) {
+      const dx = ctx.focusTarget.x - strikeX;
+      const dz = ctx.focusTarget.z - strikeZ;
+      if (dx * dx + dz * dz <= 120 * 120) {
         burstDamage += LIGHTNING_DAMAGE_BURST;
+      }
+    } else {
+      for (const b of ctx.buildings) {
+        const bx = b.worldCenter?.x ?? (b.gridX + b.cols * 0.5) * 14;
+        const bz = b.worldCenter?.z ?? (b.gridZ + b.rows * 0.5) * 14;
+        const dx = bx - strikeX;
+        const dz = bz - strikeZ;
+        if (dx * dx + dz * dz <= LIGHTNING_DAMAGE_RADIUS_SQ) {
+          burstDamage += LIGHTNING_DAMAGE_BURST;
+          if (!this.hitBuildingUids.has(b.uid)) {
+            this.hitBuildingUids.add(b.uid);
+            this.pendingBuildingsHit += 1;
+          }
+        }
       }
     }
     this.pendingBurstDamage += burstDamage;

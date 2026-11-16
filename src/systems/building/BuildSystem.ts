@@ -75,6 +75,7 @@ export class BuildSystem {
   private ghostValidState: boolean | null = null;
 
   private economyHooks: BuildEconomyHooks | null = null;
+  private enabled = true;
   private selectedDef: BuildingDefinition | null = null;
   private rotationDeg = 0;
   private currentPreview: PlacementPreview | null = null;
@@ -101,7 +102,7 @@ export class BuildSystem {
   };
 
   private readonly handleMouseDown = (e: MouseEvent): void => {
-    if (e.button !== 0 || !this.selectedDef) return;
+    if (!this.enabled || e.button !== 0 || !this.selectedDef) return;
     const rect = this.canvas.getBoundingClientRect();
     this.pointerX = e.clientX - rect.left;
     this.pointerY = e.clientY - rect.top;
@@ -113,7 +114,7 @@ export class BuildSystem {
   };
 
   private readonly handleKeyDown = (e: KeyboardEvent): void => {
-    if (!this.selectedDef) return;
+    if (!this.enabled || !this.selectedDef) return;
     if (e.code === 'KeyF' && !e.repeat) {
       this.rotateSelection();
     } else if (e.code === 'Escape' && !e.repeat) {
@@ -200,17 +201,49 @@ export class BuildSystem {
 
   public canAffordSelected(): boolean {
     if (!this.selectedDef) return false;
-    return this.economyHooks?.canAfford(this.selectedDef.oreCost) ?? true;
+    return this.economyHooks?.canBuild(this.selectedDef.id, this.placedBuildings) ?? true;
+  }
+
+  public setEnabled(enabled: boolean): void {
+    this.enabled = enabled;
+    if (!enabled) {
+      this.hidePreview();
+    }
+  }
+
+  public getBuildCost(definitionId: string, fallbackCost: number): number {
+    return this.economyHooks?.getBuildCost?.(definitionId, this.placedBuildings) ?? fallbackCost;
+  }
+
+  public clearPlacedBuildings(): void {
+    const children = [...this.entity.children];
+    for (const child of children) {
+      if (child !== this.previewRoot) {
+        child.destroy();
+      }
+    }
+    this.occupiedCells.clear();
+    this.placedBuildings.length = 0;
+    this.uidCounter = 1;
+    this.selectedDef = null;
+    this.ghostValidState = null;
+    this.hidePreview();
+    this.emitChange();
+  }
+
+  public getBuildBlockReason(definitionId: string): string | null {
+    return this.economyHooks?.getBuildBlockReason?.(definitionId, this.placedBuildings) ?? null;
   }
 
   public tryPlaceBuilding(): boolean {
-    if (!this.selectedDef || !this.currentPreview?.allValid) return false;
+    if (!this.enabled || !this.selectedDef || !this.currentPreview?.allValid) return false;
     if (!this.canAffordSelected()) return false;
     void this.placeFromPreview(this.currentPreview);
     return true;
   }
 
   public selectBuilding(def: BuildingDefinition | null): void {
+    if (!this.enabled && def !== null) return;
     if (this.selectedDef?.id === def?.id) {
       this.selectedDef = null;
     } else {
@@ -228,7 +261,7 @@ export class BuildSystem {
   }
 
   public rotateSelection(): void {
-    if (!this.selectedDef) return;
+    if (!this.enabled || !this.selectedDef) return;
     this.rotationDeg = (this.rotationDeg + 90) % 360;
     this.ghostValidState = null;
     this.updatePreview();
@@ -236,8 +269,8 @@ export class BuildSystem {
   }
 
   public update(): void {
-    if (!this.selectedDef || !this.pointerInside) {
-      if (!this.selectedDef) this.hidePreview();
+    if (!this.enabled || !this.selectedDef || !this.pointerInside) {
+      if (!this.enabled || !this.selectedDef) this.hidePreview();
       return;
     }
     this.updatePreview();
@@ -548,7 +581,7 @@ export class BuildSystem {
       this.ghostRoot.enabled = true;
       this.ghostRoot.setPosition(centerX, preview.baseY + 0.6, centerZ);
       this.ghostRoot.setEulerAngles(0, preview.rotationDeg, 0);
-      this.tintGhost(preview.allValid);
+      this.tintGhost(preview.allValid && this.canAffordSelected());
     }
   }
 
@@ -563,8 +596,10 @@ export class BuildSystem {
   }
 
   private async placeFromPreview(preview: PlacementPreview): Promise<void> {
-    const cost = preview.definition.oreCost;
-    if (this.economyHooks && !this.economyHooks.canAfford(cost)) {
+    if (
+      this.economyHooks &&
+      !this.economyHooks.canBuild(preview.definition.id, this.placedBuildings)
+    ) {
       return;
     }
 
@@ -585,22 +620,19 @@ export class BuildSystem {
       if (cell.centerY < minCellY) minCellY = cell.centerY;
     }
 
-    const placed: PlacedBuilding = {
-      uid: `bld_${this.uidCounter++}`,
-      definitionId: preview.definition.id,
-      gridX: preview.gridX,
-      gridZ: preview.gridZ,
-      cols: preview.cols,
-      rows: preview.rows,
-      rotationDeg: preview.rotationDeg,
-      worldCenter: { x: centerX, y: preview.baseY, z: centerZ },
-    };
-    this.placedBuildings.push(placed);
-    this.economyHooks?.onSpend(cost);
-    this.emitChange();
-
     try {
       const container = await this.loadGlb(preview.definition.glbFile);
+
+      if (
+        this.economyHooks &&
+        !this.economyHooks.tryPayForBuilding(preview.definition.id, this.placedBuildings)
+      ) {
+        for (const cell of preview.cells) {
+          this.occupiedCells.delete(cellKey(cell.gx, cell.gz));
+        }
+        return;
+      }
+
       const buildingEntity = this.buildScaledWrapper(
         container,
         preview.definition,
@@ -610,16 +642,24 @@ export class BuildSystem {
       const seatY = Math.min(preview.baseY, minCellY + 0.35) - 0.35;
       buildingEntity.setPosition(centerX, seatY, centerZ);
       this.entity.addChild(buildingEntity);
+
+      const placed: PlacedBuilding = {
+        uid: `bld_${this.uidCounter++}`,
+        definitionId: preview.definition.id,
+        gridX: preview.gridX,
+        gridZ: preview.gridZ,
+        cols: preview.cols,
+        rows: preview.rows,
+        rotationDeg: preview.rotationDeg,
+        worldCenter: { x: centerX, y: preview.baseY, z: centerZ },
+      };
+      this.placedBuildings.push(placed);
+      this.emitChange();
     } catch {
       // Roll back cell reservation if asset load fails
       for (const cell of preview.cells) {
         this.occupiedCells.delete(cellKey(cell.gx, cell.gz));
       }
-      const idx = this.placedBuildings.indexOf(placed);
-      if (idx !== -1) {
-        this.placedBuildings.splice(idx, 1);
-      }
-      this.emitChange();
     }
   }
 }

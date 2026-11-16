@@ -1,6 +1,11 @@
 import { h, render } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
-import { BUILDING_CATALOG, BUILDING_CATEGORIES, BuildSystem } from '../systems/index.ts';
+import {
+  BUILDING_CATALOG,
+  BUILDING_CATEGORIES,
+  BuildSystem,
+  getConstructionCost,
+} from '../systems/index.ts';
 import type { BuildingCategory } from '../types/index.ts';
 
 const panelFrame = new URL('./assets/kenney/panel.png', import.meta.url).href;
@@ -11,12 +16,18 @@ function BuildMenuApp({ buildSystem }: { buildSystem: BuildSystem }) {
   const [, setTick] = useState(0);
 
   useEffect(() => {
-    return buildSystem.onChange(() => setTick((n) => n + 1));
+    const unsub = buildSystem.onChange(() => setTick((n) => n + 1));
+    const timer = window.setInterval(() => setTick((n) => n + 1), 400);
+    return () => {
+      unsub();
+      window.clearInterval(timer);
+    };
   }, [buildSystem]);
 
   const selected = buildSystem.getSelectedDefinition();
   const rotation = buildSystem.getRotationDeg();
   const placedCount = buildSystem.getPlacedCount();
+  const selectedBlockReason = selected ? buildSystem.getBuildBlockReason(selected.id) : null;
   const items = BUILDING_CATALOG.filter((b) => b.category === activeCategory);
 
   return h(
@@ -56,8 +67,8 @@ function BuildMenuApp({ buildSystem }: { buildSystem: BuildSystem }) {
           h('span', null, `Construindo: ${selected.name} (${rotation}°)`),
           h(
             'span',
-            { style: { color: '#b7a49a' } },
-            'Verde = plano OK · Vermelho = relevo/ocupado · Clique = colocar',
+            { style: { color: selectedBlockReason ? '#e08a8a' : '#b7a49a' } },
+            selectedBlockReason ?? 'Clique para posicionar',
           ),
           h(
             'button',
@@ -74,7 +85,7 @@ function BuildMenuApp({ buildSystem }: { buildSystem: BuildSystem }) {
                 fontSize: '12px',
               },
             },
-            'Girar 90° (F)',
+            'Girar (F)',
           ),
           h(
             'button',
@@ -163,20 +174,6 @@ function BuildMenuApp({ buildSystem }: { buildSystem: BuildSystem }) {
             },
           },
           h('span', null, `Construídas: ${placedCount}`),
-          h(
-            'span',
-            {
-              style: {
-                background: 'rgba(64, 180, 108, 0.16)',
-                color: '#7ef2a9',
-                border: '1px solid rgba(64, 180, 108, 0.35)',
-                borderRadius: '999px',
-                padding: '2px 9px',
-                fontSize: '11px',
-              },
-            },
-            'Sem custo (Teste)',
-          ),
         ),
       ),
 
@@ -191,6 +188,11 @@ function BuildMenuApp({ buildSystem }: { buildSystem: BuildSystem }) {
         },
         items.map((def) => {
           const isSelected = selected?.id === def.id;
+          const cost = buildSystem.getBuildCost(
+            def.id,
+            getConstructionCost(def.id) ?? def.oreCost,
+          );
+          const blockReason = buildSystem.getBuildBlockReason(def.id);
           return h(
             'button',
             {
@@ -201,13 +203,14 @@ function BuildMenuApp({ buildSystem }: { buildSystem: BuildSystem }) {
                 textAlign: 'left',
                 background: isSelected ? '#3c2519' : '#1f1714',
                 border: isSelected ? '1px solid #ff8c42' : '1px solid #382820',
+                opacity: blockReason ? 0.68 : 1,
                 borderRadius: '10px',
                 padding: '9px 11px',
                 color: '#f5ece6',
                 cursor: 'pointer',
                 display: 'flex',
                 flexDirection: 'column',
-                gap: '3px',
+                gap: '4px',
               },
             },
             h(
@@ -230,20 +233,24 @@ function BuildMenuApp({ buildSystem }: { buildSystem: BuildSystem }) {
                 {
                   style: {
                     fontSize: '11px',
-                    color: '#ffb078',
-                    background: 'rgba(255, 140, 66, 0.14)',
-                    borderRadius: '5px',
-                    padding: '1px 6px',
+                    color: '#bfa99d',
+                    fontVariantNumeric: 'tabular-nums',
                     flexShrink: 0,
                   },
                 },
-                `${def.cols}×${def.rows}`,
+                `${cost} UJ · ${def.cols}×${def.rows}`,
               ),
             ),
             h(
               'span',
-              { style: { fontSize: '11px', color: '#a8948a', lineHeight: '1.3' } },
-              def.description,
+              {
+                style: {
+                  fontSize: '11px',
+                  color: blockReason ? '#e08a8a' : '#a8948a',
+                  lineHeight: '1.3',
+                },
+              },
+              blockReason ?? def.description,
             ),
           );
         }),
