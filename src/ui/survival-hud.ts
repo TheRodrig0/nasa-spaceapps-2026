@@ -426,12 +426,22 @@ function SurvivalHud({
             h(
               'p',
               { style: { margin: '0 0 8px', fontSize: '13px', color: '#d3bbb0' } },
-              'Uma chuva de meteoros interrompeu a pesquisa em Marte. Sua equipe tem 10 sóis para montar um posto científico que possa ser assumido pela próxima tripulação.',
+              'Uma chuva de meteoros interrompeu a pesquisa de tremores marcianos em um setor inspirado em Cerberus Fossae. A próxima equipe chega em 10 sóis pra retomar a investigação.',
             ),
             h(
               'p',
               { style: { margin: '0 0 16px', fontSize: '13px', color: '#fff3e6' } },
-              'Conclua as cinco etapas de autossuficiência e mantenha o posto de pé até o revezamento.',
+              'Conclua as cinco etapas e mantenha o Posto Aurora de pé até o revezamento.',
+            ),
+            h(
+              'a',
+              {
+                href: 'https://www.jpl.nasa.gov/news/nasas-insight-reveals-the-deep-interior-of-mars/',
+                target: '_blank',
+                rel: 'noreferrer',
+                style: { display: 'inline-block', margin: '0 0 14px', color: '#ffb078', fontSize: '12px' },
+              },
+              'Inspiração científica · InSight da NASA',
             ),
             h('div', { style: { fontSize: '12px', fontWeight: '600', marginBottom: '6px' } }, 'Perfil inicial'),
             h(

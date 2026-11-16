@@ -440,7 +440,7 @@ export async function bootstrapGame(): Promise<void> {
     } else if (solState.completed) {
       if (nextSurvival.allStagesCompleted) {
         flowState = 'victory';
-        endReason = 'A equipe de revezamento chegou. O posto está pronto para continuar a pesquisa.';
+        endReason = 'A equipe de revezamento recebeu o Posto Aurora em operação. A pesquisa dos tremores pode continuar.';
       } else {
         flowState = 'defeat';
         endReason = 'A equipe de revezamento chegou antes de o posto ficar autossuficiente.';
